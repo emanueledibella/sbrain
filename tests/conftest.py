@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from second_brain.config import Settings
@@ -58,3 +60,22 @@ def extraction(
 @pytest.fixture
 def memory(engine):
     return engine.remember("The trip goes to Palermo.", extraction=extraction())
+
+
+class LocalVectors:
+    def embed(self, texts):
+        return [[1.0, 0.0, 0.0] for _ in texts]
+
+
+@pytest.fixture
+def live_graph_engine(tmp_path, clock):
+    if os.getenv("SB_TEST_NEO4J") != "1":
+        pytest.skip("Set SB_TEST_NEO4J=1 to run against local Neo4j")
+    settings = Settings(
+        vault_path=tmp_path / "integration", embedding_dimensions=3, embedding_model="test-only"
+    )
+    engine = MemoryEngine(settings, models=LocalVectors(), clock=clock)
+    engine.graph.initialize()
+    yield engine
+    engine.graph.query("MATCH (n) WHERE n.vault_id=$vault DETACH DELETE n", vault=engine.vault.id)
+    engine.close()

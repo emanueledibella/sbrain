@@ -1,10 +1,12 @@
 """Neo4j is an atomic, rebuildable search/relationship projection, namespaced per vault."""
 
+import json
 import re
 
 from neo4j import GraphDatabase
 
 from .config import Settings
+from .models import instant
 from .state import State
 
 
@@ -44,7 +46,14 @@ class Neo4jGraph:
         if self.initialized:
             return
         self.driver.verify_connectivity()
-        for label in ("MemoryMeta", "Entity", "SourceRevision", "Assertion", "MemoryChange"):
+        for label in (
+            "MemoryMeta",
+            "Entity",
+            "SourceRevision",
+            "Assertion",
+            "MemoryChange",
+            "IdentityChange",
+        ):
             self.query(
                 f"CREATE CONSTRAINT sb_{label.lower()}_id IF NOT EXISTS "
                 f"FOR (n:{label}) REQUIRE (n.vault_id, n.id) IS UNIQUE"
@@ -63,124 +72,202 @@ class Neo4jGraph:
         )
         self.initialized = True
 
-    def sync(self, state: State, force: bool = False):
+    def sync(self, state: State, force: bool = False, current_head=None):
         if force:
             self.initialized = False
         self.initialize()
-        entities = [
-            e.model_dump(mode="json") | {"md_path": f"entities/{e.id}.md"}
-            for e in state.entities.values()
-        ]
-        sources = []
-        for s in state.sources.values():
-            props = s.model_dump(mode="json")
-            props["id"] = s.key
-            sources.append(props)
-        assertions = []
-        for version in state.versions:
-            claim = version.claim
-            props = claim.model_dump(mode="json", exclude={"evidence"})
-            props.update(
-                id=version.id,
-                claim_id=claim.id,
-                status=version.status,
-                recorded_from=version.recorded_from.isoformat(),
-                recorded_to=version.recorded_to.isoformat() if version.recorded_to else None,
-                subject_name=state.entities[claim.subject_id].name,
-                object_name=state.entities[claim.object_id].name if claim.object_id else None,
-            )
-            assertions.append(
-                {"props": props, "evidence": [e.model_dump() for e in claim.evidence]}
-            )
-        changes = [c.model_dump(mode="json") for c in state.changes]
 
         def project(tx):
+            # A write to the metadata node serializes projections, including other processes.
             meta = tx.run(
-                "MERGE (m:MemoryMeta {vault_id:$vault, id:'head'}) RETURN m.head AS head",
+                "MERGE (m:MemoryMeta {vault_id:$vault, id:'head'}) "
+                "SET m.lock = coalesce(m.lock, 0) + 1 RETURN m.head AS head, m.seq AS seq",
                 vault=self.vault_id,
             ).single()
-            if not force and meta["head"] == state.head:
-                return
-            # The deletion and recreation commit together. Other vaults are untouched.
-            tx.run(
-                "MATCH (n:Memory {vault_id:$vault}) DETACH DELETE n", vault=self.vault_id
-            ).consume()
+            if meta["seq"] is not None and meta["seq"] > len(state.events):
+                if not (force and current_head and current_head() == state.head):
+                    return  # A slow older request cannot roll back a newer projection.
+                # Explicit replay after restoring a backup may rebuild from the current
+                # canonical ledger, even if the old database has a longer history.
+            if not force and meta["head"] == state.head and meta["seq"] is not None:
+                return  # No serialization of entities/vectors on an unchanged head.
+            cursor = meta["seq"] or 0
+            incremental = (
+                not force
+                and cursor > 0
+                and cursor <= len(state.events)
+                and state.events[cursor - 1].hash == meta["head"]
+            )
+            if not incremental:
+                cursor = 0
+                tx.run(
+                    "MATCH (n:Memory {vault_id:$vault}) DETACH DELETE n", vault=self.vault_id
+                ).consume()
+            entity_ids, source_ids, claim_ids, change_ids, identity_ids = (
+                set(),
+                set(),
+                set(),
+                set(),
+                set(),
+            )
+            for event in state.events[cursor:]:
+                entity_ids.update(e.id for e in event.entities)
+                source_ids.update(source.key for source in event.sources)
+                claim_ids.update(c.id for c in event.claims)
+                claim_ids.update(c.target_id for c in event.changes)
+                if event.kind == "embeddings":
+                    claim_ids.update(event.metadata["vectors"])
+                change_ids.update(c.id for c in event.changes)
+                identity_ids.update(c.id for c in event.identity_changes)
+            entities = [
+                state.entities[i].model_dump(mode="json") | {"md_path": f"entities/{i}.md"}
+                for i in entity_ids
+            ]
+            sources = [state.sources[i].model_dump(mode="json") | {"id": i} for i in source_ids]
+            changes = [c.model_dump(mode="json") for c in state.changes if c.id in change_ids]
+            identity_changes = [
+                c.model_dump(mode="json") for c in state.identity_changes if c.id in identity_ids
+            ]
+            assertions = []
+            versions = (
+                state.versions[index]
+                for claim_id in sorted(claim_ids)
+                for index in state.claim_versions[claim_id]
+            )
+            for version in versions:
+                claim = version.claim
+                props = claim.model_dump(mode="json", exclude={"evidence", "provenance"})
+                props.update(
+                    id=version.id,
+                    claim_id=claim.id,
+                    status=version.status,
+                    provenance=json.dumps(claim.provenance, sort_keys=True),
+                    recorded_from=version.recorded_from.isoformat(),
+                    recorded_to=version.recorded_to.isoformat() if version.recorded_to else None,
+                    subject_name=state.entities[claim.subject_id].name,
+                    object_name=state.entities[claim.object_id].name if claim.object_id else None,
+                )
+                assertions.append(
+                    {"props": props, "evidence": [e.model_dump() for e in claim.evidence]}
+                )
             for label, items in (
                 ("Entity", entities),
                 ("SourceRevision", sources),
                 ("MemoryChange", changes),
+                ("IdentityChange", identity_changes),
             ):
                 tx.run(
-                    f"UNWIND $items AS p CREATE (n:Memory:{label}) SET n = p, n.vault_id = $vault",
+                    f"UNWIND $items AS p MERGE (n:Memory:{label} {{vault_id:$vault, id:p.id}}) "
+                    "SET n = p, n.vault_id = $vault",
                     items=items,
                     vault=self.vault_id,
                 ).consume()
             tx.run(
-                "UNWIND $items AS item CREATE (n:Memory:Assertion) "
+                "UNWIND $items AS item "
+                "MERGE (n:Memory:Assertion {vault_id:$vault, id:item.props.id}) "
                 "SET n = item.props, n.vault_id = $vault",
                 items=assertions,
                 vault=self.vault_id,
             ).consume()
             tx.run(
-                "MATCH (a:Assertion {vault_id:$vault}) "
-                "MATCH (s:Entity {vault_id:$vault, id:a.subject_id}) "
-                "CREATE (a)-[:ABOUT]->(s)",
-                vault=self.vault_id,
-            ).consume()
-            tx.run(
-                "MATCH (a:Assertion {vault_id:$vault}) WHERE a.object_id IS NOT NULL "
-                "MATCH (o:Entity {vault_id:$vault, id:a.object_id}) "
-                "CREATE (a)-[:OBJECT]->(o)",
-                vault=self.vault_id,
-            ).consume()
-            tx.run(
-                "UNWIND $items AS item "
-                "MATCH (a:Assertion {vault_id:$vault, id:item.props.id}) "
-                "UNWIND item.evidence AS evidence "
-                "MATCH (s:SourceRevision {vault_id:$vault, id:evidence.source_key}) "
-                "CREATE (a)-[r:SUPPORTED_BY]->(s) "
-                "SET r.start=evidence.start, r.end=evidence.end, r.quote=evidence.quote",
+                "UNWIND $items AS item MATCH (a:Assertion {vault_id:$vault, id:item.props.id}) "
+                "MATCH (s:Entity {vault_id:$vault, id:a.subject_id}) MERGE (a)-[:ABOUT]->(s)",
                 items=assertions,
                 vault=self.vault_id,
             ).consume()
             tx.run(
-                "MATCH (c:MemoryChange {vault_id:$vault}) "
-                "MATCH (a:Assertion {vault_id:$vault}) WHERE a.claim_id=c.target_id "
-                "CREATE (c)-[:TARGETS]->(a)",
+                "UNWIND $items AS item MATCH (a:Assertion {vault_id:$vault, id:item.props.id}) "
+                "MATCH (o:Entity {vault_id:$vault, id:a.object_id}) MERGE (a)-[:OBJECT]->(o)",
+                items=assertions,
                 vault=self.vault_id,
             ).consume()
             tx.run(
-                "MATCH (c:MemoryChange {vault_id:$vault}) "
-                "MATCH (s:SourceRevision {vault_id:$vault, id:c.source_key}) "
-                "CREATE (c)-[:SUPPORTED_BY]->(s)",
+                "UNWIND $items AS item MATCH (a:Assertion {vault_id:$vault, id:item.props.id}) "
+                "UNWIND item.evidence AS evidence "
+                "MATCH (s:SourceRevision {vault_id:$vault, id:evidence.source_key}) "
+                "MERGE (a)-[r:SUPPORTED_BY {start:evidence.start, end:evidence.end}]->(s) "
+                "SET r.quote=evidence.quote",
+                items=assertions,
+                vault=self.vault_id,
+            ).consume()
+            # A changed assertion also needs edges from previously projected changes.
+            affected_changes = {c.id: c for c in state.changes if c.id in change_ids}
+            for claim_id in claim_ids:
+                affected_changes.update({c.id: c for c in state.claim_changes.get(claim_id, ())})
+            affected_changes = [c.model_dump(mode="json") for c in affected_changes.values()]
+            for relation, field in (("TARGETS", "target_id"), ("REPLACEMENT", "replacement_id")):
+                tx.run(
+                    f"UNWIND $items AS item MATCH (c:MemoryChange {{vault_id:$vault, id:item.id}}) "
+                    f"MATCH (a:Assertion {{vault_id:$vault}}) WHERE a.claim_id=item.{field} "
+                    f"MERGE (c)-[:{relation}]->(a)",
+                    items=affected_changes,
+                    vault=self.vault_id,
+                ).consume()
+            for label, items in (("MemoryChange", changes), ("IdentityChange", identity_changes)):
+                tx.run(
+                    f"UNWIND $items AS item MATCH (c:{label} {{vault_id:$vault, id:item.id}}) "
+                    "MATCH (s:SourceRevision {vault_id:$vault, id:item.source_key}) "
+                    "MERGE (c)-[:SUPPORTED_BY]->(s)",
+                    items=items,
+                    vault=self.vault_id,
+                ).consume()
+            tx.run(
+                "UNWIND $items AS item MATCH (c:IdentityChange {vault_id:$vault, id:item.id}) "
+                "MATCH (e:Entity {vault_id:$vault, id:item.entity_id}) MERGE (c)-[:ABOUT]->(e)",
+                items=identity_changes,
                 vault=self.vault_id,
             ).consume()
             tx.run(
-                "MATCH (c:MemoryChange {vault_id:$vault}) "
-                "MATCH (a:Assertion {vault_id:$vault}) WHERE a.claim_id=c.replacement_id "
-                "CREATE (c)-[:REPLACEMENT]->(a)",
+                "UNWIND $items AS item MATCH (c:IdentityChange {vault_id:$vault, id:item.id}) "
+                "MATCH (e:Entity {vault_id:$vault, id:item.target_id}) "
+                "MERGE (c)-[:MERGED_INTO]->(e)",
+                items=identity_changes,
                 vault=self.vault_id,
             ).consume()
             tx.run(
-                f"MATCH (a:Assertion {{vault_id:$vault}}) "
+                f"UNWIND $ids AS id MATCH (a:Assertion {{vault_id:$vault, claim_id:id}}) "
+                f"REMOVE a:{self.vector_index} WITH a "
                 "WHERE a.embedding_model=$model AND size(a.embedding)=$dimensions "
                 f"SET a:{self.vector_index}",
+                ids=list(claim_ids),
                 vault=self.vault_id,
                 model=self.settings.embedding_model,
                 dimensions=self.settings.embedding_dimensions,
             ).consume()
             tx.run(
-                "MATCH (m:MemoryMeta {vault_id:$vault, id:'head'}) SET m.head=$head",
+                "MATCH (m:MemoryMeta {vault_id:$vault, id:'head'}) SET m.head=$head, m.seq=$seq",
                 vault=self.vault_id,
                 head=state.head,
+                seq=len(state.events),
             ).consume()
 
         with self.driver.session(database=self.settings.neo4j_database) as session:
             session.execute_write(project)
 
     def search(
-        self, query: str, vector: list[float] | None, scope: str | None, limit: int = 200
+        self,
+        query: str,
+        vector: list[float] | None,
+        scope: str | None,
+        limit: int = 200,
+        *,
+        valid_at=None,
+        known_at=None,
+        include_uncertain: bool = False,
     ) -> dict[str, float]:
+        valid = instant(valid_at).isoformat()
+        known = instant(known_at).isoformat()
+
+        def visible(node):
+            return (
+                f"{node}.status='active' AND datetime({node}.recorded_from)<=datetime($known) "
+                f"AND ({node}.recorded_to IS NULL "
+                f"OR datetime($known)<datetime({node}.recorded_to)) "
+                f"AND datetime({node}.valid_from)<=datetime($valid) "
+                f"AND ({node}.valid_to IS NULL OR datetime($valid)<datetime({node}.valid_to)) "
+                f"AND ($uncertain OR {node}.epistemic='explicit')"
+            )
+
         scores: dict[str, float] = {}
         tokens = re.findall(r"\w+", query, re.UNICODE)
         # Escape Lucene syntax by constructing a query from tokens only.
@@ -190,11 +277,14 @@ class Neo4jGraph:
             rows = self.query(
                 "CALL db.index.fulltext.queryNodes('sb_text_v1', $query) "
                 "YIELD node, score WHERE node.vault_id=$vault "
-                "AND ($scope IS NULL OR node.scope=$scope) "
+                "AND ($scope IS NULL OR node.scope=$scope) AND " + visible("node") + " "
                 "RETURN node.claim_id AS id, score ORDER BY score DESC LIMIT $limit",
                 query=lucene,
                 vault=self.vault_id,
                 scope=scope,
+                valid=valid,
+                known=known,
+                uncertain=include_uncertain,
                 limit=limit,
             )
         for rank, row in enumerate(rows):
@@ -205,27 +295,35 @@ class Neo4jGraph:
             rows = self.query(
                 "CALL db.index.vector.queryNodes($index, $limit, $vector) "
                 "YIELD node, score WHERE node.vault_id=$vault AND score >= 0.675 "
-                "AND ($scope IS NULL OR node.scope=$scope) "
+                "AND ($scope IS NULL OR node.scope=$scope) AND " + visible("node") + " "
                 "RETURN node.claim_id AS id, score ORDER BY score DESC",
                 index=self.vector_index,
                 limit=limit,
                 vector=vector,
                 vault=self.vault_id,
                 scope=scope,
+                valid=valid,
+                known=known,
+                uncertain=include_uncertain,
             )
             for rank, row in enumerate(rows):
                 scores[row["id"]] = scores.get(row["id"], 0) + 1 / (60 + rank)
         if scores:
             seeds = sorted(scores, key=lambda identifier: -scores[identifier])[:20]
             neighbors = self.query(
-                "MATCH (seed:Assertion {vault_id:$vault}) WHERE seed.claim_id IN $seeds "
+                "MATCH (seed:Assertion {vault_id:$vault}) WHERE seed.claim_id IN $seeds AND "
+                + visible("seed")
+                + " "
                 "MATCH (seed)-[a]->(entity:Entity)<-[b]-(related:Assertion {vault_id:$vault}) "
                 "WHERE type(a) IN ['ABOUT','OBJECT'] AND type(b) IN ['ABOUT','OBJECT'] "
-                "AND ($scope IS NULL OR related.scope=$scope) "
+                "AND ($scope IS NULL OR related.scope=$scope) AND " + visible("related") + " "
                 "RETURN DISTINCT related.claim_id AS id ORDER BY id LIMIT $limit",
                 vault=self.vault_id,
                 seeds=seeds,
                 scope=scope,
+                valid=valid,
+                known=known,
+                uncertain=include_uncertain,
                 limit=limit,
             )
             for neighbor in neighbors:

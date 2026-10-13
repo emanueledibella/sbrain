@@ -10,26 +10,7 @@ from second_brain.models import SourceRevision, instant, uid
 from second_brain.ollama import Ollama
 from second_brain.state import State
 
-from .conftest import extraction
-
-
-class LocalVectors:
-    def embed(self, texts):
-        return [[1.0, 0.0, 0.0] for _ in texts]
-
-
-@pytest.fixture
-def live_graph_engine(tmp_path, clock):
-    if os.getenv("SB_TEST_NEO4J") != "1":
-        pytest.skip("Set SB_TEST_NEO4J=1 to run against local Neo4j")
-    settings = Settings(
-        vault_path=tmp_path / "integration", embedding_dimensions=3, embedding_model="test-only"
-    )
-    engine = MemoryEngine(settings, models=LocalVectors(), clock=clock)
-    engine.graph.initialize()
-    yield engine
-    engine.graph.query("MATCH (n) WHERE n.vault_id=$vault DETACH DELETE n", vault=engine.vault.id)
-    engine.close()
+from .conftest import LocalVectors, extraction
 
 
 @pytest.mark.integration
@@ -290,6 +271,7 @@ def test_ollama_uses_schema_and_validates_dimensions(monkeypatch):
 
 def test_reembedding_keeps_claims_and_evidence(engine, memory):
     engine.models = LocalVectors()
+    engine.settings.embedding_dimensions = 3
     before = engine.explain(memory["claim_ids"][0])
     assert engine.reembed()["updated"] == 1
     after = engine.explain(memory["claim_ids"][0])

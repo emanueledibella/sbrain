@@ -47,6 +47,7 @@ class ClaimDraft(Record):
     context: str = Field(default="default", min_length=1, max_length=200)
     statement: str = Field(min_length=1, max_length=4000)
     epistemic: Literal["explicit", "proposed", "inferred"] = "explicit"
+    polarity: Literal["positive", "negative"] = "positive"
     quote: str = Field(min_length=1, max_length=8000)
     quote_start: int | None = Field(default=None, ge=0)
     valid_from: AwareDatetime | None = None
@@ -63,6 +64,18 @@ class Entity(Record):
     name: str
     kind: str
     scope: str
+
+
+class IdentityChange(Record):
+    id: str
+    kind: Literal["alias", "merge"]
+    entity_id: str
+    target_id: str | None = None
+    alias: str | None = None
+    reason: str
+    source_key: str
+    effective_at: AwareDatetime
+    recorded_at: AwareDatetime
 
 
 class SourceRevision(Record):
@@ -98,12 +111,14 @@ class Claim(Record):
     scope: str
     statement: str
     epistemic: Literal["explicit", "proposed", "inferred"]
+    polarity: Literal["positive", "negative"] = "positive"
     valid_from: AwareDatetime
     valid_to: AwareDatetime | None = None
     recorded_at: AwareDatetime
     evidence: list[Evidence]
     embedding: list[float] = Field(default_factory=list)
     embedding_model: str | None = None
+    provenance: dict = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def interval(self):
@@ -140,6 +155,7 @@ class Event(Record):
     entities: list[Entity] = Field(default_factory=list)
     claims: list[Claim] = Field(default_factory=list)
     changes: list[Change] = Field(default_factory=list)
+    identity_changes: list[IdentityChange] = Field(default_factory=list)
     metadata: dict = Field(default_factory=dict)
     previous_hash: str
     hash: str

@@ -1,4 +1,6 @@
-# Copy this section into your Codex configuration, preserving other settings.
-[mcp_servers.second-brain]
+# Export SB_MCP_WRITE_TOKEN in the environment inherited by Codex.
+# Alternatively run ./scripts/mcp-config.sh and copy the private .runtime/mcp.owner.toml.
+[mcp_servers.second_brain]
 url = "http://127.0.0.1:8000/mcp"
 tool_timeout_sec = 600
+bearer_token_env_var = "SB_MCP_WRITE_TOKEN"

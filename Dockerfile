@@ -3,9 +3,9 @@ FROM python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
 WORKDIR /build
 COPY pyproject.toml requirements-runtime.lock ./
+RUN python -m pip wheel --wheel-dir /wheels -r requirements-runtime.lock
 COPY src ./src
-RUN python -m pip wheel --wheel-dir /wheels -r requirements-runtime.lock \
-    && python -m pip wheel --no-deps --wheel-dir /wheels .
+RUN python -m pip wheel --no-deps --wheel-dir /wheels .
 
 FROM python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258 AS runtime
 

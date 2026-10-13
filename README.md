@@ -18,8 +18,8 @@ docker compose exec -T mcp second-brain status
 ```
 
 `init.sh` uses a temporary Python container to create the vault and a `.env` file with a
-random password and `600` permissions. It preserves existing credentials and settings and
-adds your UID/GID so that vault files belong to your user rather than root. It can be rerun.
+random Neo4j password, distinct MCP bearer tokens, and `600` permissions. It preserves existing credentials and settings and
+repairs vault permissions (`700` directories, `600` files), rejects symlinks, and adds your UID/GID so that vault files belong to your user rather than root. It can be rerun.
 Credentials and the vault are excluded from Git and the Docker build context.
 
 Compose starts:
@@ -52,8 +52,11 @@ retrieval then use local services. On Apple Silicon, this Docker configuration r
 on the **CPU**. The chat model in LM Studio is separate from the models used by the engine
 and can continue running in the native macOS application.
 The small extraction model provides a starting point: evaluate its semantic accuracy and
-entity resolution on your own examples. Quote validation checks the evidence text, not the
-meaning of the model's interpretation.
+entity resolution on your own examples. Quote validation checks exact source text. Local extraction also rejects common English/Italian
+negation and tentative-language classification mismatches and attempts one repair. These are
+conservative lexical guards, not a general semantic verifier; broad quotes may need narrowing.
+Manual/agent extraction remains available for reviewed interpretations. Failed extraction
+leaves the original saved and pending rather than silently adopting an unsupported memory.
 
 Models and resource settings are configurable in `.env` (see [.env.example](.env.example)).
 On a fresh installation, copy `.env.example` to `.env` **before** running `init.sh`, which
@@ -165,7 +168,11 @@ A note can describe many entities and memories; a separate file for each attribu
 required. Entity IDs are stable, types are open strings (`person`, `event`, `project`, etc.),
 and predicates are extensible. To reuse an identity, the model must provide `existing_id`;
 the engine checks its scope, name, and type. A matching name alone does not merge entities.
-This conservative approach may create duplicates; guided alias and merge management is future work.
+This conservative approach may create duplicates. Use `find_entities`, `add_alias`, and
+`merge_entities` for explicit identity decisions. Merges require the same scope and type,
+reject cycles, and preserve original entity/claim IDs. Each alias/merge has a source, reason,
+effective time, and recording time; historical queries do not use later identity decisions.
+Aliases become searchable without automatically identifying homonyms as the same person.
 The prompt includes at most fifty entities from the same scope, prioritizing names found in
 the text. Archives with many people or projects will need dedicated entity resolution search.
 
@@ -173,10 +180,14 @@ Each memory contains:
 
 - A subject, predicate, value, and optional linked object.
 - A scope (`personal`, `work`, `demo`, etc.) and specific context.
-- An epistemic status: `explicit`, `proposed`, or `inferred`.
+- An epistemic status: `explicit`, `proposed`, or `inferred`, and positive/negative polarity.
 - A validity interval and recording time.
 - A source, revision, hash, and quote with Unicode character offsets.
 - A local embedding and model identity, when available.
+- Extraction origin, extractor version, source hash, and, for local inference, prompt/schema
+  hashes and an observed model digest when Ollama reports one. The observed digest is not a
+  guarantee that a mutable model tag was unchanged during inference. Older records retain
+  their original data and may have no provenance metadata.
 
 `explicit` means that the source states something; it does not establish its real-world truth.
 Proposals and inferences are excluded from normal retrieval; include them with `--include-uncertain`.
@@ -189,7 +200,7 @@ replacing one another. Detection compares the same subject, predicate, and conte
 not perform universal semantic comparison between statements.
 
 The graph contains `Entity`, `SourceRevision`, `Assertion` versions, `MemoryChange`, and
-`MemoryMeta`. Relationships are `ABOUT`, `OBJECT`, `SUPPORTED_BY`, `TARGETS`, and `REPLACEMENT`.
+`IdentityChange`, and `MemoryMeta`. Relationships are `ABOUT`, `OBJECT`, `SUPPORTED_BY`, `TARGETS`, `REPLACEMENT`, and `MERGED_INTO`.
 A memory is an intermediate node so that sources, time, and corrections can attach to the fact itself.
 
 Logical example:
@@ -227,7 +238,16 @@ replacement with the same validity interval unless explicit parameters override 
 `revise` closes the old fact's validity at the time of the change and introduces the new fact.
 The previous version of the old interval remains available for historical queries.
 `retract CLAIM_ID --reason ...` retracts without replacement; it **does not delete** originals.
-These operations act on an individual memory, not the entire entity.
+These operations act on an individual memory, not the entire entity. Replacements preserve
+both subject and linked object. Use `--polarity negative` (or the MCP `polarity` argument) to
+explicitly deny a relation; otherwise a correction/update preserves the target's polarity.
+Opposite polarities can conflict even when the value string is the same.
+
+```bash
+docker compose exec -T mcp second-brain find-entities "Marco" --scope personal
+docker compose exec -T mcp second-brain add-alias ENTITY_ID "Alternative name" --reason "User supplied alias"
+docker compose exec -T mcp second-brain merge-entities DUPLICATE_ID CANONICAL_ID --reason "Confirmed same person"
+```
 
 There are two time axes, with intervals inclusive at the start and exclusive at the end:
 
@@ -255,27 +275,43 @@ to replace. `entities/` is a generated audit view; use `recall` for the state va
 ## Retrieval, availability, and recovery
 
 Retrieval combines full-text search, semantic search, and graph relationships. Candidates
-are filtered along both time axes before forming the agent's context.
+are filtered along both time axes before scoring or graph expansion and before forming the
+agent's context. Retracted or uncertain facts cannot seed ordinary historical graph searches.
 Cosine similarity over visible versions prevents numerous historical nodes from hiding
 valid memories within the vector index's candidate limit. If services are unavailable,
 canonical text search is used with a warning. The budget is estimated at four characters
-per token: evidence quotes are never truncated, although an oversized memory may be excluded.
+per token: evidence quotes are never truncated, although an oversized memory may be excluded. Conflict
+candidates are grouped once, and only whole results that fit the limit/budget read and verify
+originals. Sources shared by selected results are verified once per request, never cached
+across requests; tampering is still detected before returning evidence.
 Neo4j search also expands candidates through shared entities (`ABOUT`/`OBJECT`), allowing
 a question about a person to retrieve the context of an event they participate in.
 
 A commit is written to the JSONL ledger **before** updating the graph. There is no distributed
 transaction between the filesystem and Neo4j. File locks, fsync, atomic writes, and
-idempotent IDs protect retries. An interrupted final-line write is saved in `recovery/`
+idempotent IDs protect retries, including explicit observed timestamps. Ollama and Neo4j I/O
+runs outside the canonical writer lock. Changes revalidate their target version at commit
+and reject concurrent edits rather than overwriting them. Embeddings are generated in bounded
+batches; concurrent new claims are left for the next `reembed`. A failed derived Markdown
+write returns the durable IDs with a warning and can be repaired by retry/replay. An interrupted final-line write is saved in `recovery/`
 before restoring the boundary of the last complete event. A corrupted complete line or
 broken hash chain stops the engine. The chain detects accidental alterations; it is not
 a cryptographic signature against someone who can rewrite the entire vault.
 
-Neo4j stores a projection identified by `vault_id` and the ledger hash. A new projection
-replaces the old one in a single Neo4j transaction; other vaults and database data remain
-separate. A failure preserves the previous projection and is reported.
-In this version, every new commit rebuilds the vault projection: this is simple but costs
-O(N) and will need incremental updates for large archives. Replay and canonical search
-also load the ledger into RAM.
+Neo4j stores an incremental projection identified by `vault_id`, event sequence, and ledger
+hash. A transaction updates touched entities, source revisions, assertion versions, and
+changes while retaining other vaults. A metadata lock serializes concurrent projections;
+an older snapshot cannot roll back a newer head. `replay` can rebuild the full projection,
+and failures roll back the database transaction.
+
+The engine caches verified events and immutable state snapshots by ledger file signature
+and hash. Unchanged reads avoid JSON/vector decoding; changed files verify the cached prefix
+before incrementally validating new events. A cold process still validates the entire log.
+Derived profiles use a separate view lock and persisted head checkpoint, then regenerate
+only affected entities from the newest snapshot. Editable episode files are never overwritten
+by view regeneration. `replay` repairs all profiles without a model.
+Canonical visible-vector cosine retrieval remains O(N × dimensions), and snapshots/indexes
+reside in RAM; very large archives will still need additional retrieval/storage work.
 
 ```bash
 # Reuse adopted ledger data without new AI extraction.
@@ -286,6 +322,10 @@ docker compose exec -T mcp second-brain extract SOURCE_ID --revision 1
 
 # Regenerate missing embeddings or rebuild them after a model or dimension change.
 docker compose exec -T mcp second-brain reembed
+
+# Evaluate the local extractor on six fictional English/Italian semantic probes.
+# Does not adopt any evaluation memories in the vault or graph.
+docker compose exec -T mcp second-brain evaluate
 ```
 
 Summaries and contexts are composed from retrieved memories without storing an independent
@@ -301,7 +341,8 @@ With Compose running, clients that use `mcpServers` can use [mcp.http.json](mcp.
 {
   "mcpServers": {
     "second-brain": {
-      "url": "http://127.0.0.1:8000/mcp"
+      "url": "http://127.0.0.1:8000/mcp",
+      "headers": {"Authorization": "Bearer REPLACE_WITH_YOUR_LOCAL_TOKEN"}
     }
   }
 }
@@ -309,8 +350,29 @@ With Compose running, clients that use `mcpServers` can use [mcp.http.json](mcp.
 
 In LM Studio, open **Program → Install → Edit mcp.json** and add `second-brain` to the
 `mcpServers` object, preserving other configured servers. The chat model must support tool
-calls. The endpoint is local and has no remote authentication; Host/Origin protection
-remains enabled inside the container.
+calls. HTTP requires the bearer token generated by `init.sh`. `SB_MCP_WRITE_TOKEN` grants
+reads and writes; `SB_MCP_READ_TOKEN` grants reads only. Host/Origin protection remains enabled.
+The server limits request bodies (default 2 MiB), concurrent MCP requests (8), and requests
+per client IP per minute (120); tune these through `.env`. `/health` remains public liveness.
+An HTTP server without an owner credential fails closed. This is owner-managed local bearer
+authentication, without an external OAuth provider.
+
+```bash
+# Requires Docker only; creates private files in ignored .runtime/.
+./scripts/mcp-config.sh
+./scripts/mcp-config.sh --read-only
+```
+
+Copy `.runtime/mcp.owner.json` into an HTTP client's configuration, or use the read-only
+variant for an agent that should only retrieve memories. These files contain credentials:
+keep them private. Never copy a real token into the public example files.
+For Codex, copy `.runtime/mcp.owner.toml` into your private configuration, preserving other
+settings. [mcp.codex.toml](mcp.codex.toml) instead demonstrates `bearer_token_env_var`; it
+requires exporting the credential in the environment inherited by Codex. The private snippet
+uses `http_headers`, as described in the [official Codex MCP configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+After changing client credentials or adding tools, reload the client's MCP connection.
+Rotating a token means replacing it in `.env`, recreating the MCP service, and regenerating
+private client snippets.
 
 For clients that require **stdio**, use [mcp.docker.example.json](mcp.docker.example.json),
 adapting the Docker executable path (`command -v docker`) and project path:
@@ -335,7 +397,9 @@ vault. An absolute project path avoids relying on the client's working directory
 An optional `mcp.local.json` with actual paths is excluded from Git. Replace any previous
 client configuration that launched `.venv/bin/second-brain` with the Docker configuration.
 Keep the Neo4j password out of MCP client configuration.
-The project does not automatically modify a client's global configuration.
+The snippet generator preserves client configurations by default. For an explicit local
+Codex installation, `python3 scripts/mcp_config.py --install-codex` updates only the matching
+server entry and keeps a private backup; this option requires host Python 3.11+.
 
 A first prompt to check retrieval without adding memories:
 
@@ -343,7 +407,7 @@ A first prompt to check retrieval without adding memories:
 > Show the sources of the retrieved memories.
 
 Exposed tools: `remember`, `recall`, `read_source`, `correct`, `revise`, `retract`,
-`explain`, `history`, and `memory_status`. The `memory://source/SOURCE_ID/REVISION` resource
+`explain`, `history`, `find_entities`, `add_alias`, `merge_entities`, and `memory_status`. The `memory://source/SOURCE_ID/REVISION` resource
 and `memory_policy` prompt are also available.
 Maintenance operations (`replay`, `reembed`) use the CLI; no tool exposes arbitrary Cypher.
 
@@ -358,7 +422,7 @@ The vault is stored in plaintext. For personal data, use disk encryption and bac
 entire vault, including `.memory/`. A Neo4j dump is useful but does not replace the originals.
 Version 1 is intended for a single owner on a local machine. It does not include automatic
 capture from apps, OCR or audio ingestion, notifications, multi-device synchronization,
-remote authentication, guided entity merging, or coordinated physical deletion.
+a remote OAuth flow, automatic identity matching, or coordinated physical deletion.
 These are future modules, not implicit engine behavior.
 
 Technical references: [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs),

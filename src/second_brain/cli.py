@@ -19,6 +19,9 @@ def parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("init", help="Initialize vault and generate a local .env if missing")
     sub.add_parser("status")
+    sub.add_parser(
+        "evaluate", help="Run semantic probes on the local extractor without saving memories"
+    )
     sub.add_parser("replay", help="Rebuild Neo4j and Markdown views without an LLM")
     sub.add_parser("reembed", help="Generate embeddings for all existing claims locally")
     sub.add_parser(
@@ -31,7 +34,7 @@ def parser() -> argparse.ArgumentParser:
     server.add_argument("--port", type=int, default=8000, help="HTTP port")
     rem = sub.add_parser("remember")
     rem.add_argument("--file", type=Path, required=True)
-    rem.add_argument("--title", default="Nota")
+    rem.add_argument("--title", default="Note")
     rem.add_argument("--scope", default="personal")
     rem.add_argument("--kind", default="note")
     rem.add_argument("--observed-at")
@@ -66,6 +69,17 @@ def parser() -> argparse.ArgumentParser:
     hist = sub.add_parser("history")
     hist.add_argument("--entity-id")
     hist.add_argument("--scope")
+    find = sub.add_parser("find-entities")
+    find.add_argument("query")
+    find.add_argument("--scope")
+    find.add_argument("--limit", type=int, default=20)
+    for name in ("add-alias", "merge-entities"):
+        identity = sub.add_parser(name)
+        identity.add_argument("entity_id")
+        identity.add_argument("alias" if name == "add-alias" else "target_id")
+        identity.add_argument("--reason", required=True)
+        identity.add_argument("--effective-at")
+        identity.add_argument("--request-id")
     for name in ("correct", "revise", "retract"):
         change = sub.add_parser(name)
         change.add_argument("claim_id")
@@ -76,6 +90,7 @@ def parser() -> argparse.ArgumentParser:
             change.add_argument("--statement", required=True)
             change.add_argument("--effective-at", required=name == "revise")
             change.add_argument("--valid-to")
+            change.add_argument("--polarity", choices=("positive", "negative"))
     return p
 
 
@@ -120,6 +135,10 @@ def dispatch(args, engine: MemoryEngine):
             "initialized": True,
             "next": "docker compose up -d --build; models are provisioned automatically",
         }
+    if command == "evaluate":
+        from .evaluation import evaluate_models
+
+        return evaluate_models(engine)
     if command == "serve":
         from .server import create_server
 
@@ -170,6 +189,18 @@ def dispatch(args, engine: MemoryEngine):
         return engine.explain(args.claim_id)
     if command == "history":
         return engine.history(args.entity_id, args.scope)
+    if command == "find-entities":
+        return engine.find_entities(args.query, args.scope, args.limit)
+    if command in {"add-alias", "merge-entities"}:
+        payload = {"alias": args.alias} if command == "add-alias" else {"target_id": args.target_id}
+        return engine.identity_change(
+            args.entity_id,
+            kind="alias" if command == "add-alias" else "merge",
+            reason=args.reason,
+            effective_at=args.effective_at,
+            request_id=args.request_id,
+            **payload,
+        )
     if command in {"correct", "revise", "retract"}:
         payload = {"reason": args.reason, "request_id": args.request_id}
         if command != "retract":
@@ -178,6 +209,7 @@ def dispatch(args, engine: MemoryEngine):
                 statement=args.statement,
                 effective_at=args.effective_at,
                 valid_to=args.valid_to,
+                polarity=args.polarity,
             )
         return engine.change(
             args.claim_id,

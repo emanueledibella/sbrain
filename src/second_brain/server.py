@@ -1,15 +1,17 @@
 """Local MCP boundary over stdio or HTTP, with validated memory operations."""
 
 from functools import partial
-from typing import Any
+from typing import Any, Literal
 
 from anyio import to_thread
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from .auth import LocalTokens, ProtectedMCP, write_access
 from .engine import MemoryEngine
 from .models import Extraction
 
@@ -25,7 +27,7 @@ Writes to the memory ledger survive graph/model outages; read the returned statu
 
 
 def create_server(engine: MemoryEngine, *, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
-    mcp = FastMCP(
+    mcp = ProtectedMCP(
         "Second Brain",
         instructions=INSTRUCTIONS,
         log_level="WARNING",
@@ -33,12 +35,20 @@ def create_server(engine: MemoryEngine, *, host: str = "127.0.0.1", port: int = 
         port=port,
         stateless_http=True,
         json_response=True,
+        max_request_body_size=engine.settings.mcp_max_body_bytes,
+        token_verifier=LocalTokens(engine.settings),
+        auth=AuthSettings(
+            issuer_url=f"http://127.0.0.1:{port}",
+            resource_server_url=None,
+            required_scopes=["memory:read"],
+        ),
         transport_security=TransportSecuritySettings(
             enable_dns_rebinding_protection=True,
             allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", "mcp:*"],
             allowed_origins=["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"],
         ),
     )
+    mcp.memory_settings = engine.settings
     read = ToolAnnotations(readOnlyHint=True, destructiveHint=False)
     write = ToolAnnotations(readOnlyHint=False, destructiveHint=False)
 
@@ -48,9 +58,10 @@ def create_server(engine: MemoryEngine, *, host: str = "127.0.0.1", port: int = 
         return JSONResponse({"status": "ok"})
 
     @mcp.tool(annotations=write)
+    @write_access
     async def remember(
         text: str,
-        title: str = "Nota",
+        title: str = "Note",
         scope: str = "personal",
         kind: str = "note",
         observed_at: str | None = None,
@@ -113,6 +124,7 @@ def create_server(engine: MemoryEngine, *, host: str = "127.0.0.1", port: int = 
         return await to_thread.run_sync(partial(engine.read_source, source_id, revision))
 
     @mcp.tool(annotations=write)
+    @write_access
     async def correct(
         claim_id: str,
         value: str,
@@ -121,6 +133,7 @@ def create_server(engine: MemoryEngine, *, host: str = "127.0.0.1", port: int = 
         effective_at: str | None = None,
         valid_to: str | None = None,
         request_id: str | None = None,
+        polarity: Literal["positive", "negative"] | None = None,
     ) -> dict[str, Any]:
         """Correct an erroneous claim, preserving how it was previously remembered.
 
@@ -138,10 +151,12 @@ def create_server(engine: MemoryEngine, *, host: str = "127.0.0.1", port: int = 
                 effective_at=effective_at,
                 valid_to=valid_to,
                 request_id=request_id,
+                polarity=polarity,
             )
         )
 
     @mcp.tool(annotations=write)
+    @write_access
     async def revise(
         claim_id: str,
         value: str,
@@ -150,6 +165,7 @@ def create_server(engine: MemoryEngine, *, host: str = "127.0.0.1", port: int = 
         reason: str,
         valid_to: str | None = None,
         request_id: str | None = None,
+        polarity: Literal["positive", "negative"] | None = None,
     ) -> dict[str, Any]:
         """Record a real-world change. Keep the preceding fact valid until effective_at."""
         return await to_thread.run_sync(
@@ -163,10 +179,12 @@ def create_server(engine: MemoryEngine, *, host: str = "127.0.0.1", port: int = 
                 valid_to=valid_to,
                 reason=reason,
                 request_id=request_id,
+                polarity=polarity,
             )
         )
 
     @mcp.tool(annotations=write)
+    @write_access
     async def retract(claim_id: str, reason: str, request_id: str | None = None) -> dict[str, Any]:
         """Retract an incorrect assertion while keeping its evidence and audit history.
 
@@ -192,6 +210,67 @@ def create_server(engine: MemoryEngine, *, host: str = "127.0.0.1", port: int = 
     async def memory_status() -> dict[str, Any]:
         """Check canonical storage, pending extraction and local services."""
         return await to_thread.run_sync(engine.status)
+
+    @mcp.tool(annotations=read)
+    async def find_entities(
+        query: str,
+        scope: str | None = None,
+        limit: int = 20,
+        valid_at: str | None = None,
+        known_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Find possible identities and aliases; name matches do not authorize a merge."""
+        return await to_thread.run_sync(
+            partial(engine.find_entities, query, scope, limit, valid_at, known_at)
+        )
+
+    @mcp.tool(annotations=write)
+    @write_access
+    async def add_alias(
+        entity_id: str,
+        alias: str,
+        reason: str,
+        effective_at: str | None = None,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Record an explicitly supplied alternative name with source and temporal audit."""
+        return await to_thread.run_sync(
+            partial(
+                engine.identity_change,
+                entity_id,
+                kind="alias",
+                alias=alias,
+                reason=reason,
+                effective_at=effective_at,
+                request_id=request_id,
+            )
+        )
+
+    @mcp.tool(annotations=write)
+    @write_access
+    async def merge_entities(
+        entity_id: str,
+        target_id: str,
+        reason: str,
+        effective_at: str | None = None,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Explicitly identify two canonical entities as the same, preserving original fact IDs.
+
+        Requires the same scope and kind. Never merge homonyms without user-supplied evidence.
+        This appends an identity decision; older known_at queries retain separate identities.
+        """
+        return await to_thread.run_sync(
+            partial(
+                engine.identity_change,
+                entity_id,
+                kind="merge",
+                target_id=target_id,
+                reason=reason,
+                effective_at=effective_at,
+                request_id=request_id,
+            )
+        )
 
     @mcp.resource("memory://source/{source_id}/{revision}")
     async def source_resource(source_id: str, revision: int) -> str:

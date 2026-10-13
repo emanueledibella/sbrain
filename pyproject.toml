@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "second-brain"
+version = "0.1.0"
+description = "Local, evidence-backed, bitemporal memory engine with Markdown, Neo4j and MCP"
+requires-python = ">=3.11"
+dependencies = [
+  "mcp>=1.20,<2",
+  "neo4j>=5.26,<7",
+  "pydantic>=2.10,<3",
+  "pydantic-settings>=2.7,<3",
+  "httpx>=0.28,<1",
+  "filelock>=3.16,<4",
+  "anyio>=4.5,<5",
+  "starlette>=0.27,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.9,<1"]
+
+[project.scripts]
+second-brain = "second_brain.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/second_brain"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = ["integration: requires running local Neo4j or Ollama"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

@@ -1,0 +1,126 @@
+name: second-brain
+
+x-memory-environment: &memory-environment
+  SB_NEO4J_URI: bolt://neo4j:7687
+  SB_NEO4J_USER: ${SB_NEO4J_USER:-neo4j}
+  NEO4J_PASSWORD: ${NEO4J_PASSWORD:?Run ./scripts/init.sh first}
+  SB_NEO4J_DATABASE: ${SB_NEO4J_DATABASE:-neo4j}
+  SB_OLLAMA_URL: http://ollama:11434
+  SB_CHAT_MODEL: ${SB_CHAT_MODEL:-qwen2.5:1.5b}
+  SB_EMBEDDING_MODEL: ${SB_EMBEDDING_MODEL:-embeddinggemma}
+  SB_EMBEDDING_DIMENSIONS: ${SB_EMBEDDING_DIMENSIONS:-768}
+  SB_MODEL_TIMEOUT: ${SB_MODEL_TIMEOUT:-180}
+  SB_MODEL_THREADS: ${SB_MODEL_THREADS:-4}
+  SB_MODEL_CONTEXT: ${SB_MODEL_CONTEXT:-16384}
+  SB_MODEL_OUTPUT_TOKENS: ${SB_MODEL_OUTPUT_TOKENS:-2048}
+  SB_MAX_SOURCE_CHARS: ${SB_MAX_SOURCE_CHARS:-24000}
+
+x-memory-dependencies: &memory-dependencies
+  neo4j:
+    condition: service_healthy
+  ollama:
+    condition: service_healthy
+  models-init:
+    condition: service_completed_successfully
+
+services:
+  mcp:
+    image: second-brain:local
+    build:
+      context: .
+      target: runtime
+    restart: unless-stopped
+    init: true
+    user: "${SB_CONTAINER_UID:-1000}:${SB_CONTAINER_GID:-1000}"
+    environment:
+      <<: *memory-environment
+      SB_VAULT_PATH: /data/vault
+    ports:
+      - "127.0.0.1:${SB_MCP_PORT:-8000}:8000"
+    volumes:
+      - type: bind
+        source: ${SB_VAULT_PATH:-./vault}
+        target: /data/vault
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=64m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on: *memory-dependencies
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  neo4j:
+    image: neo4j:5.26-community@sha256:c7d25c0eeebfe125718d58b72ed5d663c85d0479047733845eb2237c67ce8069
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?Run ./scripts/init.sh first}
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$${NEO4J_AUTH#*/}\" 'RETURN 1' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+  ollama:
+    image: ollama/ollama:latest@sha256:adca95a12c2b386a8f9a995e7fa0600e187e3323b5e5522f5a6c3b1ec73eff99
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  models-init:
+    image: ollama/ollama:latest@sha256:adca95a12c2b386a8f9a995e7fa0600e187e3323b5e5522f5a6c3b1ec73eff99
+    restart: "no"
+    entrypoint: ["/bin/sh", "-ec"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      SB_CHAT_MODEL: ${SB_CHAT_MODEL:-qwen2.5:1.5b}
+      SB_EMBEDDING_MODEL: ${SB_EMBEDDING_MODEL:-embeddinggemma}
+    command:
+      - |
+        ollama show "$$SB_CHAT_MODEL" >/dev/null 2>&1 || ollama pull "$$SB_CHAT_MODEL"
+        ollama show "$$SB_EMBEDDING_MODEL" >/dev/null 2>&1 || ollama pull "$$SB_EMBEDDING_MODEL"
+        echo "Local memory models are ready."
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  tests:
+    profiles: [test]
+    image: second-brain:test
+    build:
+      context: .
+      target: test
+    environment:
+      <<: *memory-environment
+      SB_VAULT_PATH: /tmp/test-default-vault
+      SB_TEST_NEO4J: "1"
+      SB_TEST_OLLAMA: "1"
+    depends_on: *memory-dependencies
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  ollama_models:

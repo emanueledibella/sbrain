@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "second-brain": {
+      "command": "/PERCORSO/AL/COMANDO/docker",
+      "args": [
+        "compose",
+        "--project-directory", "/PERCORSO/second_brain",
+        "exec", "-T", "mcp", "second-brain", "serve", "--transport", "stdio"
+      ]
+    }
+  }
+}

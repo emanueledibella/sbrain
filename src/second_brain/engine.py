@@ -356,8 +356,8 @@ class MemoryEngine:
                 effective < target.valid_from or (target.valid_to and effective >= target.valid_to)
             ):
                 raise ValueError("Update must start inside the target validity interval")
-            declaration = statement or "Ritiro della memoria: " + claim_id
-            text = f"# {kind}\n\n{declaration}\n\nMotivo: {reason}\n"
+            declaration = statement or "Memory retraction: " + claim_id
+            text = f"# {kind}\n\n{declaration}\n\nReason: {reason}\n"
             source = self.vault.save_source(
                 events,
                 text=text,
@@ -645,9 +645,9 @@ class MemoryEngine:
             lines = [
                 f"# {entity.name}",
                 "",
-                "> Vista generata: modificare le fonti, non questo file.",
+                "> Generated view: edit the sources, not this file.",
                 "",
-                f"ID: `{entity.id}` · Tipo: {entity.kind} · Ambito: {entity.scope}",
+                f"ID: `{entity.id}` · Type: {entity.kind} · Scope: {entity.scope}",
                 "",
             ]
             for version in state.current.values():
@@ -655,11 +655,11 @@ class MemoryEngine:
                 if claim.subject_id == entity.id:
                     lines.append(
                         f"- [{version.status}/{claim.epistemic}] {claim.statement} "
-                        f"(`{claim.id}`; dal {claim.valid_from.isoformat()})"
+                        f"(`{claim.id}`; from {claim.valid_from.isoformat()})"
                     )
                     for ev in claim.evidence:
                         source = state.sources[ev.source_key]
-                        lines.append(f"  - Fonte: [{source.title}](../{source.path})")
+                        lines.append(f"  - Source: [{source.title}](../{source.path})")
             atomic_write(
                 self.vault.root / "entities" / f"{entity.id}.md", ("\n".join(lines) + "\n").encode()
             )

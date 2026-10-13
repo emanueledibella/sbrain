@@ -1,0 +1,34 @@
+{
+  "entities": [
+    {"ref": "trip", "name": "Example trip", "kind": "event"},
+    {"ref": "marco", "name": "Example Marco", "kind": "person"}
+  ],
+  "claims": [
+    {
+      "subject_ref": "trip",
+      "predicate": "destination",
+      "value": "Palermo",
+      "context": "destination",
+      "statement": "The trip destination is Palermo.",
+      "quote": "I decided that the trip destination is Palermo."
+    },
+    {
+      "subject_ref": "marco",
+      "object_ref": "trip",
+      "predicate": "participates_in",
+      "value": "Example trip",
+      "context": "example-trip",
+      "statement": "Marco is joining the trip.",
+      "quote": "Marco is joining the trip."
+    },
+    {
+      "subject_ref": "trip",
+      "predicate": "activity",
+      "value": "museum",
+      "context": "activities",
+      "statement": "We might visit a museum.",
+      "epistemic": "proposed",
+      "quote": "We might visit a museum."
+    }
+  ]
+}

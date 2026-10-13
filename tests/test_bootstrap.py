@@ -17,7 +17,7 @@ def test_bootstrap_preserves_existing_credentials_settings_and_memory(tmp_path):
     vault = tmp_path / "vault"
     vault.mkdir()
     original = vault / "note.md"
-    original.write_text("Ricordo già esistente.")
+    original.write_text("Existing memory.")
     bootstrap.initialize(tmp_path)
     first = env.read_text()
     assert "NEO4J_PASSWORD=existing-secret\n" in first
@@ -27,7 +27,7 @@ def test_bootstrap_preserves_existing_credentials_settings_and_memory(tmp_path):
     assert stat.S_IMODE(env.stat().st_mode) == 0o600
     bootstrap.initialize(tmp_path)
     assert env.read_text() == first
-    assert original.read_text() == "Ricordo già esistente."
+    assert original.read_text() == "Existing memory."
 
 
 @pytest.mark.parametrize("initial", [None, "NEO4J_PASSWORD=replace-with-a-random-password\n"])

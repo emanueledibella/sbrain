@@ -93,7 +93,7 @@ async def test_real_protocol_and_memory_tools(tmp_path, transport):
             remembered = await session.call_tool(
                 "remember",
                 {
-                    "text": "La gita va a Palermo.",
+                    "text": "The trip goes to Palermo.",
                     "request_id": "mcp-test",
                     "extraction": extraction(),
                 },
@@ -101,21 +101,21 @@ async def test_real_protocol_and_memory_tools(tmp_path, transport):
             assert not remembered.isError
             result = remembered.structuredContent
             claim_id = result["claim_ids"][0]
-            recalled = await session.call_tool("recall", {"query": "gita"})
+            recalled = await session.call_tool("recall", {"query": "trip"})
             assert recalled.structuredContent["memories"][0]["value"] == "Palermo"
             resource = await session.read_resource(f"memory://source/{result['source_id']}/1")
-            assert resource.contents[0].text == "La gita va a Palermo."
+            assert resource.contents[0].text == "The trip goes to Palermo."
             corrected = await session.call_tool(
                 "correct",
                 {
                     "claim_id": claim_id,
                     "value": "Catania",
-                    "statement": "La gita va a Catania.",
-                    "reason": "Correzione esplicita",
+                    "statement": "The trip goes to Catania.",
+                    "reason": "Explicit correction",
                 },
             )
             assert not corrected.isError
-            new = await session.call_tool("recall", {"query": "gita"})
+            new = await session.call_tool("recall", {"query": "trip"})
             assert new.structuredContent["memories"][0]["value"] == "Catania"
             bad = await session.call_tool("read_source", {"source_id": "../../etc/passwd"})
             assert bad.isError

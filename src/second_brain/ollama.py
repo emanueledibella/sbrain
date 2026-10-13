@@ -23,11 +23,11 @@ Keep statement self-contained. Do not assume a new claim corrects an old one.
 Return empty entities/claims if nothing worth remembering is supported by the text.
 Use at most 20 claims per note. Be concise; do not repeat the same fact.
 Both entities and claims arrays are required. A scope is NOT an entity ref.
-Example source: "La gita va a Roma."
-Example output: {"entities":[{"ref":"trip","name":"Gita","kind":"event","existing_id":null}],
-"claims":[{"subject_ref":"trip","predicate":"destination","value":"Roma",
-"object_ref":null,"context":"destination","statement":"La gita va a Roma.",
-"epistemic":"explicit","quote":"La gita va a Roma.","quote_start":null,
+Example source: "The trip goes to Rome."
+Example output: {"entities":[{"ref":"trip","name":"Trip","kind":"event","existing_id":null}],
+"claims":[{"subject_ref":"trip","predicate":"destination","value":"Rome",
+"object_ref":null,"context":"destination","statement":"The trip goes to Rome.",
+"epistemic":"explicit","quote":"The trip goes to Rome.","quote_start":null,
 "valid_from":null,"valid_to":null}]}
 """
 

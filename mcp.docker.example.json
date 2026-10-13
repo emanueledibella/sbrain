@@ -1,10 +1,10 @@
 {
   "mcpServers": {
     "second-brain": {
-      "command": "/PERCORSO/AL/COMANDO/docker",
+      "command": "/PATH/TO/docker",
       "args": [
         "compose",
-        "--project-directory", "/PERCORSO/second_brain",
+        "--project-directory", "/PATH/TO/second_brain",
         "exec", "-T", "mcp", "second-brain", "serve", "--transport", "stdio"
       ]
     }

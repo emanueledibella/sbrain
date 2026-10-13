@@ -1,14 +1,14 @@
-# Second Brain — motore locale di memoria personale
+# Second Brain — local personal memory engine
 
-Prima versione di un **motore nostro**: il codice decide come adottare, correggere, versionare e
-recuperare i ricordi. Usa Neo4j come database, Ollama per inferenza locale e l'SDK ufficiale MCP
-per comunicare con un agente. Non dipende da Graphiti, Mem0 o altri motori di memoria.
+An independent memory engine that decides how to adopt, correct, version, and retrieve
+memories. It uses Neo4j as its database, Ollama for local inference, and the official MCP
+SDK to communicate with an agent. It does not depend on Graphiti, Mem0, or other memory engines.
 
-## Avvio
+## Getting started
 
-Richiede **Docker con Compose v2** avviato (Docker Desktop oppure OrbStack sul Mac).
-Python, il motore MCP, Neo4j e Ollama girano nei container: non serve una `.venv` sul computer.
-Dalla cartella del progetto:
+Requires **Docker with Compose v2** running (Docker Desktop or OrbStack on macOS).
+Python, the MCP engine, Neo4j, and Ollama run in containers, so a host `.venv` is not required.
+From the project directory:
 
 ```bash
 ./scripts/init.sh
@@ -17,23 +17,23 @@ docker compose ps -a
 docker compose exec -T mcp second-brain status
 ```
 
-`init.sh` usa un container Python temporaneo per creare il vault e una `.env` con password
-casuale e permessi `600`. Conserva password e configurazione già esistenti e aggiunge UID/GID
-dell'utente per scrivere nel vault senza creare file appartenenti a root. Si può rieseguire.
-Le credenziali e il vault sono esclusi da Git e dal contesto di build delle immagini.
+`init.sh` uses a temporary Python container to create the vault and a `.env` file with a
+random password and `600` permissions. It preserves existing credentials and settings and
+adds your UID/GID so that vault files belong to your user rather than root. It can be rerun.
+Credentials and the vault are excluded from Git and the Docker build context.
 
-Compose avvia:
+Compose starts:
 
-| Servizio | Funzione | Indirizzo sul computer |
+| Service | Purpose | Host address |
 | --- | --- | --- |
-| `mcp` | Motore di memoria e MCP Streamable HTTP persistente | `http://127.0.0.1:8000/mcp` |
-| `neo4j` | Grafo, ricerca testuale e vettoriale | Browser `http://127.0.0.1:7474`, Bolt `127.0.0.1:7687` |
-| `ollama` | Estrazione locale e embedding | `http://127.0.0.1:11434` |
-| `models-init` | Scarica i modelli mancanti, poi termina | Nessuna porta |
+| `mcp` | Memory engine and persistent MCP Streamable HTTP server | `http://127.0.0.1:8000/mcp` |
+| `neo4j` | Graph, full-text search, and vector search | Browser `http://127.0.0.1:7474`, Bolt `127.0.0.1:7687` |
+| `ollama` | Local extraction and embeddings | `http://127.0.0.1:11434` |
+| `models-init` | Downloads missing models, then exits | No exposed port |
 
-`mcp` parte quando Neo4j e Ollama sono sani e `models-init` ha terminato con successo.
-È normale che `models-init` risulti **Exited (0)**. Al primo avvio il download dei modelli
-può richiedere diversi minuti; quelli già presenti nel volume vengono riutilizzati.
+`mcp` starts once Neo4j and Ollama are healthy and `models-init` has completed successfully.
+It is normal for `models-init` to show **Exited (0)**. Downloading models on the first run
+may take several minutes; models already stored in the volume are reused.
 
 ```bash
 docker compose logs -f models-init
@@ -41,203 +41,204 @@ docker compose logs --tail=100 mcp
 curl http://127.0.0.1:8000/health
 ```
 
-`/health` verifica che il trasporto HTTP risponda; `second-brain status` e `memory_status`
-controllano vault, database e modelli. Tutte le porte sono pubblicate solo su `127.0.0.1`.
-Nel container il motore usa `bolt://neo4j:7687` e `http://ollama:11434` tramite la rete Compose.
-Non usare `localhost` per raggiungere un altro container.
+`/health` checks that the HTTP transport responds; `second-brain status` and `memory_status`
+check the vault, database, and models. All published ports bind only to `127.0.0.1`.
+Inside the container, the engine uses `bolt://neo4j:7687` and `http://ollama:11434` over the
+Compose network. Use service names to reach other containers.
 
-I modelli predefiniti sono `qwen2.5:1.5b` per l'estrazione e `embeddinggemma` per gli embedding.
-Nessuna chiave o API a pagamento è richiesta. I download iniziali richiedono internet;
-elaborazione e recupero usano poi i servizi locali. Su Apple Silicon questa configurazione
-Ollama in Docker usa la **CPU**. Il modello della chat in LM Studio è separato dai modelli
-usati dal motore e può continuare a girare nell'applicazione nativa sul Mac.
-Il modello piccolo serve per iniziare: correttezza semantica e qualità delle identità devono
-essere valutate sui tuoi esempi. La validazione delle citazioni non verifica il significato
-dell'interpretazione del modello.
+The default models are `qwen2.5:1.5b` for extraction and `embeddinggemma` for embeddings.
+No API key or paid API is required. Initial downloads need internet access; processing and
+retrieval then use local services. On Apple Silicon, this Docker configuration runs Ollama
+on the **CPU**. The chat model in LM Studio is separate from the models used by the engine
+and can continue running in the native macOS application.
+The small extraction model provides a starting point: evaluate its semantic accuracy and
+entity resolution on your own examples. Quote validation checks the evidence text, not the
+meaning of the model's interpretation.
 
-I modelli e le risorse sono configurabili in `.env` (vedi [.env.example](.env.example)).
-Su una nuova installazione si può copiare `.env.example` in `.env` **prima** di eseguire
-`init.sh`, che sostituirà la password di esempio con una casuale. Con un database esistente,
-modificare la `.env` corrente conservando `NEO4J_PASSWORD`.
-`SB_VAULT_PATH` indica la cartella sul computer da montare in `/data/vault`: `init.sh` crea
-`./vault`; se scegli un'altra cartella, creala prima dell'avvio. `SB_MCP_PORT` cambia la porta
-HTTP pubblicata; in quel caso aggiornare anche la URL nella configurazione del client.
-Per applicare modifiche a `.env` o al codice usare `docker compose up -d --build`.
-Le immagini di base sono fissate ai digest e le dipendenze runtime in `requirements-runtime.lock`.
-Il container MCP usa un utente senza privilegi e un filesystem di sistema in sola lettura.
-I thread di inferenza sono limitati a quattro per evitare il forte rallentamento osservato
-con tutti i core nel container su questo Mac; `SB_MODEL_THREADS` permette di modificarli.
-Sono configurabili anche il contesto e il limite di generazione. Note molto lunghe o dense
-possono superare questi limiti e restare in attesa: suddividerle prima dell'ingestione.
+Models and resource settings are configurable in `.env` (see [.env.example](.env.example)).
+On a fresh installation, copy `.env.example` to `.env` **before** running `init.sh`, which
+replaces the placeholder password with a random one. With an existing database, edit the
+current `.env` while preserving `NEO4J_PASSWORD`.
+`SB_VAULT_PATH` specifies the host directory mounted at `/data/vault`: `init.sh` creates
+`./vault`; create any alternative directory before starting the services. `SB_MCP_PORT`
+changes the published HTTP port; update the client URL accordingly.
+Apply changes to `.env` or the code with `docker compose up -d --build`.
+Base images are pinned by digest, and runtime dependencies are pinned in `requirements-runtime.lock`.
+The MCP container runs as an unprivileged user with a read-only root filesystem.
+Inference defaults to four CPU threads; adjust this with `SB_MODEL_THREADS` for your hardware.
+The context window and output limit are also configurable. Very long or dense notes may
+exceed these limits and remain pending: split them before ingestion.
 
-## Persistenza, arresto e aggiornamento
+## Persistence, shutdown, and updates
 
-Il vault è un bind mount della cartella `vault/`, quindi Markdown e registro restano accessibili
-dal computer. Neo4j e Ollama usano i volumi `second-brain_neo4j_data`,
-`second-brain_neo4j_logs` e `second-brain_ollama_models`. Il nome del progetto Compose rimane
-`second-brain`: vengono riutilizzati anche i dati e i modelli della configurazione precedente.
+The vault is a bind mount of the `vault/` directory, so Markdown files and the ledger remain
+accessible from the host. Neo4j and Ollama use the `second-brain_neo4j_data`,
+`second-brain_neo4j_logs`, and `second-brain_ollama_models` volumes. The Compose project name
+is `second-brain`, allowing existing data and model volumes to be reused.
 
 ```bash
-# Arresto e successivo avvio, conservando file e volumi.
+# Stop and restart while preserving files and volumes.
 docker compose down
 docker compose up -d --build
 
-# Dopo una modifica al codice del motore.
+# After changing the engine code.
 docker compose up -d --build mcp
 ```
 
-Per un arresto normale non usare `docker compose down -v`, che rimuove i volumi di Neo4j
-e i modelli scaricati. Prima di un backup del vault, arrestare i processi che possono scrivere
-(inclusi i client stdio); salvare l'intera cartella, compresa `.memory/`.
-Se una porta è occupata da un altro servizio, risolvere il conflitto prima dell'avvio.
+For a normal shutdown, use `docker compose down` without `-v`; adding `-v` removes the Neo4j
+volumes and downloaded models. Before backing up the vault, stop processes that can write to
+it, including stdio clients, and save the entire directory, including `.memory/`.
+Resolve any port conflicts before starting the services.
 
-## Primo utilizzo
+## First use
 
-Esempio inventato, da tenere nell'ambito `demo`:
-
-```bash
-docker compose exec -T mcp second-brain remember --file examples/nota.md --title "Gita di esempio" --scope demo
-docker compose exec -T mcp second-brain recall "Chi viene in gita?" --scope demo
-```
-
-Per usare un'estrazione esplicita e riproducibile, senza inferenza del modello chat:
+A fictional example, kept in the `demo` scope:
 
 ```bash
-docker compose exec -T mcp second-brain remember --file examples/nota.md --scope demo \
-  --extraction examples/estrazione.json --request-id esempio-1
+docker compose exec -T mcp second-brain remember --file examples/note.md --title "Example trip" --scope demo
+docker compose exec -T mcp second-brain recall "Who is joining the trip?" --scope demo
 ```
 
-`request-id` rende sicuro riprovare la stessa operazione. Un riutilizzo con contenuti diversi
-viene rifiutato. I risultati contengono gli ID delle fonti e dei ricordi, citazioni, conflitti e
-avvisi. La CLI restituisce `0` al successo, `2` quando ci sono avvisi/elaborazione incompleta,
-`1` per errori. `stored_pending_extraction` significa che il testo è già salvato ma il motore
-non ha adottato l'estrazione. Non confonderlo con `indexed`.
+To use an explicit, reproducible extraction without chat model inference:
 
-La dimostrazione completa registra ricordi fittizi nell'ambito `demo`, cambia la destinazione
-di una gita e corregge la partecipazione di Marco:
+```bash
+docker compose exec -T mcp second-brain remember --file examples/note.md --scope demo \
+  --extraction examples/extraction.json --request-id example-en-1
+```
+
+`request-id` makes retries safe. Reusing it with different content is rejected.
+Results contain source and claim IDs, quotes, conflicts, and warnings. The CLI returns `0`
+on success, `2` for warnings or incomplete processing, and `1` for errors.
+`stored_pending_extraction` means the text is saved, but the engine has not adopted an
+extraction. `indexed` indicates successful indexing.
+
+The full demo stores fictional memories in the `demo` scope, changes a trip's destination,
+and corrects Marco's participation:
 
 ```bash
 docker compose exec -T mcp second-brain demo
 ```
 
-Per provare una demo isolata senza avviare Neo4j/Ollama, dopo il bootstrap e la build:
+The English demo uses new request IDs so that it can coexist with memories from the earlier
+Italian demo. Existing saved sources retain their original language.
+
+After bootstrapping and building, run an isolated demo without starting Neo4j or Ollama:
 
 ```bash
 docker compose run --rm --no-deps mcp --vault /tmp/second-brain-demo --offline demo
 ```
 
-I percorsi passati alla CLI sono quelli **interni al container**. Gli esempi sono inclusi
-nell'immagine in `/app/examples`; il vault del computer è accessibile in `/data/vault`.
-Per importare un'altra nota dal computer, passarla in stdin a un file temporaneo del container:
+Paths passed to the CLI are **container paths**. Examples are included in the image at
+`/app/examples`; the host vault is available at `/data/vault`.
+To import another note from the host, send it through stdin to a temporary container file:
 
 ```bash
-docker compose exec -T mcp sh -c 'cat > /tmp/nota.md' < /PERCORSO/nota.md
-docker compose exec -T mcp second-brain remember --file /tmp/nota.md --scope personal
-docker compose exec -T mcp rm /tmp/nota.md
+docker compose exec -T mcp sh -c 'cat > /tmp/note.md' < /PATH/TO/note.md
+docker compose exec -T mcp second-brain remember --file /tmp/note.md --scope personal
+docker compose exec -T mcp rm /tmp/note.md
 ```
 
-## Come è organizzata la memoria
+## How memory is organized
 
 ```text
-Agente / LM Studio
-        ⇅ MCP HTTP oppure stdio tramite docker compose exec
-Container mcp: MemoryEngine
-        ├── /data/vault ⇄ ./vault: MD originali + registro JSONL
-        ├── Container ollama: estrazione JSON + embedding
-        └── Container neo4j: grafo + indici testuali e vettoriali
+Agent / LM Studio
+        ⇅ MCP HTTP or stdio through docker compose exec
+mcp container: MemoryEngine
+        ├── /data/vault ⇄ ./vault: original Markdown + JSONL ledger
+        ├── ollama container: JSON extraction + embeddings
+        └── neo4j container: graph + full-text and vector indexes
 ```
 
 ```text
 vault/
-  episodes/<source-id>.md                    # copie modificabili delle note
-  entities/<entity-id>.md                    # profili derivati, rigenerabili
+  episodes/<source-id>.md                      # editable copies of notes
+  entities/<entity-id>.md                      # derived, regenerable profiles
   .memory/
-    vault-id                                # namespace stabile del vault
-    writer.lock                             # un solo scrittore alla volta
-    events.jsonl                            # operazioni adottate, con catena SHA-256
-    source-versions/<source-id>/<rev>-<hash>.md  # originali immutabili
-    recovery/                               # eventuali frammenti di append interrotti
+    vault-id                                  # stable vault namespace
+    writer.lock                               # one writer at a time
+    events.jsonl                              # adopted operations in a SHA-256 chain
+    source-versions/<source-id>/<rev>-<hash>.md # immutable originals
+    recovery/                                 # fragments from interrupted appends
 ```
 
-Una nota può descrivere molte entità e ricordi: non occorre creare un file per ogni attributo.
-Gli ID delle entità sono stabili; i tipi sono stringhe aperte (`person`, `event`, `project`…)
-e i predicati sono estendibili. Per riusare un'identità il modello deve indicare `existing_id`;
-il motore verifica ambito, nome e tipo. Un nome uguale da solo non produce una fusione.
-Questa prudenza può creare duplicati: una gestione guidata di alias/fusioni è lavoro successivo.
-Il prompt include al massimo cinquanta entità dello stesso ambito, dando precedenza ai nomi
-presenti nel testo. La risoluzione delle identità dovrà diventare una ricerca dedicata per
-archivi con molte persone/progetti.
+A note can describe many entities and memories; a separate file for each attribute is not
+required. Entity IDs are stable, types are open strings (`person`, `event`, `project`, etc.),
+and predicates are extensible. To reuse an identity, the model must provide `existing_id`;
+the engine checks its scope, name, and type. A matching name alone does not merge entities.
+This conservative approach may create duplicates; guided alias and merge management is future work.
+The prompt includes at most fifty entities from the same scope, prioritizing names found in
+the text. Archives with many people or projects will need dedicated entity resolution search.
 
-Ogni ricordo contiene:
+Each memory contains:
 
-- soggetto, predicato, valore e un eventuale oggetto collegato;
-- ambito (`personal`, `work`, `demo`…) e contesto specifico;
-- stato epistemico: `explicit`, `proposed`, `inferred`;
-- intervallo di validità e momento di registrazione;
-- fonte, revisione, hash e citazione con offset in caratteri Unicode;
-- embedding locale e identità del modello, se disponibili.
+- A subject, predicate, value, and optional linked object.
+- A scope (`personal`, `work`, `demo`, etc.) and specific context.
+- An epistemic status: `explicit`, `proposed`, or `inferred`.
+- A validity interval and recording time.
+- A source, revision, hash, and quote with Unicode character offsets.
+- A local embedding and model identity, when available.
 
-`explicit` significa che la fonte lo dichiara, non che sia verificato nella realtà.
-Proposte e inferenze sono escluse dal recupero normale; si includono con `--include-uncertain`.
-Il modello propone dati JSON; il motore controlla schema, citazioni, riferimenti e intervalli.
-Una citazione inesistente o ambigua rifiuta l'intero lotto, lasciando disponibile l'originale.
-Per un errore di schema/citazione/riferimento l'estrattore locale prova una sola riparazione
-con il messaggio di validazione; se fallisce, il lotto resta in attesa senza essere adottato.
-Nuovi fatti discordanti coesistono e sono segnalati come conflitti: non vengono sovrascritti
-automaticamente. Il rilevamento usa lo stesso soggetto/predicato/contesto; non è un confronto
-semantico universale tra frasi.
+`explicit` means that the source states something; it does not establish its real-world truth.
+Proposals and inferences are excluded from normal retrieval; include them with `--include-uncertain`.
+The model proposes JSON data; the engine checks its schema, quotes, references, and intervals.
+A missing or ambiguous quote rejects the entire batch while preserving the original source.
+For a schema, quote, or reference error, the local extractor attempts one repair using the
+validation message. If that fails, the batch remains pending without being adopted.
+Conflicting new facts coexist and are reported as conflicts rather than automatically
+replacing one another. Detection compares the same subject, predicate, and context; it does
+not perform universal semantic comparison between statements.
 
-Il grafo contiene `Entity`, `SourceRevision`, `Assertion` (versioni), `MemoryChange` e
-`MemoryMeta`. Le relazioni sono `ABOUT`, `OBJECT`, `SUPPORTED_BY`, `TARGETS` e `REPLACEMENT`.
-Un ricordo è un nodo intermedio per poter collegare al fatto stesso fonti, tempo e correzioni.
+The graph contains `Entity`, `SourceRevision`, `Assertion` versions, `MemoryChange`, and
+`MemoryMeta`. Relationships are `ABOUT`, `OBJECT`, `SUPPORTED_BY`, `TARGETS`, and `REPLACEMENT`.
+A memory is an intermediate node so that sources, time, and corrections can attach to the fact itself.
 
-Esempio logico:
+Logical example:
 
 ```text
-[Marco] ← ABOUT ─ [«Marco partecipa alla gita»] ─ OBJECT → [Gita]
+[Marco] ← ABOUT ─ ["Marco is joining the trip"] ─ OBJECT → [Trip]
                               │
                          SUPPORTED_BY
                               ↓
-                     [Nota MD, revisione 1]
+                     [Markdown note, revision 1]
 
-[Correzione] ─ TARGETS → [vecchia affermazione]
-      ├── REPLACEMENT → [nuova affermazione]
-      └── SUPPORTED_BY → [MD con la correzione esplicita]
+[Correction] ─ TARGETS → [old assertion]
+      ├── REPLACEMENT → [new assertion]
+      └── SUPPORTED_BY → [Markdown with the explicit correction]
 ```
 
-## Correzioni e tempo
+## Corrections and time
 
-Sono due operazioni diverse, entrambe appendono nuovi dati:
+These are two different operations, both of which append new data:
 
 ```bash
-# Avevo ricordato male: correggere anche la ricostruzione del passato.
+# Correct a mistaken memory, including the reconstruction of the past.
 docker compose exec -T mcp second-brain correct CLAIM_ID \
-  --value "Marco: sì" --statement "Marco partecipa alla gita." \
-  --reason "La precedente interpretazione era errata"
+  --value "Marco: yes" --statement "Marco is joining the trip." \
+  --reason "The previous interpretation was incorrect"
 
-# Il programma è cambiato realmente da un certo momento.
+# Record an actual change of plan from a specific point in time.
 docker compose exec -T mcp second-brain revise CLAIM_ID \
-  --value Catania --statement "La destinazione della gita è Catania." \
-  --effective-at "2026-10-14T10:00:00+02:00" --reason "Nuova decisione"
+  --value Catania --statement "The trip destination is Catania." \
+  --effective-at "2026-10-14T10:00:00+02:00" --reason "New decision"
 ```
 
-`correct` ritira la vecchia affermazione dal momento in cui la correzione viene registrata
-e crea una sostituzione con lo stesso intervallo di validità, salvo parametri espliciti.
-`revise` chiude invece la validità del vecchio fatto alla data del cambiamento e introduce
-il nuovo. La versione precedente del vecchio intervallo resta consultabile.
-`retract CLAIM_ID --reason ...` ritira senza sostituire; **non cancella** gli originali.
-Le operazioni agiscono sul singolo ricordo, non sull'intera entità.
+`correct` retracts the old assertion from the time the correction is recorded and creates a
+replacement with the same validity interval unless explicit parameters override it.
+`revise` closes the old fact's validity at the time of the change and introduces the new fact.
+The previous version of the old interval remains available for historical queries.
+`retract CLAIM_ID --reason ...` retracts without replacement; it **does not delete** originals.
+These operations act on an individual memory, not the entire entity.
 
-Due assi temporali, con intervalli inclusivi all'inizio ed esclusivi alla fine:
+There are two time axes, with intervals inclusive at the start and exclusive at the end:
 
-- `valid_from / valid_to`: quando valeva il fatto;
-- `recorded_from / recorded_to`: quando il sistema conservava quella versione.
+- `valid_from / valid_to`: when the fact was valid.
+- `recorded_from / recorded_to`: when the system held that version.
 
-La data di una gita futura può essere un suo attributo: non è automaticamente la data
-da cui diventa valida una decisione presa oggi. I timestamp richiedono un fuso orario.
+The date of a future trip can be an attribute of the trip; it is not automatically the date
+from which a decision made today becomes valid. Timestamps require a timezone.
 
 ```bash
-docker compose exec -T mcp second-brain recall "destinazione gita" \
+docker compose exec -T mcp second-brain recall "trip destination" \
   --valid-at "2026-10-13T12:00:00+02:00" \
   --known-at "2026-10-15T12:00:00+02:00"
 docker compose exec -T mcp second-brain explain CLAIM_ID
@@ -245,55 +246,56 @@ docker compose exec -T mcp second-brain history --scope personal
 docker compose exec -T mcp second-brain read-source SOURCE_ID --revision 1
 ```
 
-Modificare una nota in `episodes/` non cambia silenziosamente il ricordo. Registrare la
-modifica con `refresh SOURCE_ID`, oppure `remember --source-id SOURCE_ID --file ...`.
-Il nuovo MD diventa una nuova revisione. L'estrazione di una revisione nuova non ritira da sola
-i fatti delle precedenti: usare `correct`/`revise`/`retract` per decidere cosa sostituire.
-`entities/` è una vista generata dell'audit; usare `recall` per lo stato valido in un momento.
+Editing a note in `episodes/` does not silently change a memory. Register the edit with
+`refresh SOURCE_ID` or `remember --source-id SOURCE_ID --file ...`.
+The new Markdown becomes a new revision. Extracting a new revision does not automatically
+retract facts from previous revisions: use `correct`, `revise`, or `retract` to choose what
+to replace. `entities/` is a generated audit view; use `recall` for the state valid at a given time.
 
-## Recupero, disponibilità e ricostruzione
+## Retrieval, availability, and recovery
 
-Il recupero combina ricerca testuale, semantica e i collegamenti al grafo. I candidati sono
-filtrati rispetto a entrambi gli assi temporali prima di formare il contesto per l'agente.
-Un calcolo cosine sulle sole versioni visibili evita che molti nodi storici nascondano i
-ricordi corretti nel limite dei candidati dell'indice vettoriale. Senza servizi viene usata
-la ricerca testuale canonica con un avviso. Il budget è stimato a quattro caratteri per token:
-le citazioni di un ricordo non vengono troncate; un ricordo troppo grande può essere escluso.
-La ricerca Neo4j espande anche i candidati attraverso entità condivise (`ABOUT`/`OBJECT`),
-così una domanda su una persona può recuperare il contesto dell'evento a cui partecipa.
+Retrieval combines full-text search, semantic search, and graph relationships. Candidates
+are filtered along both time axes before forming the agent's context.
+Cosine similarity over visible versions prevents numerous historical nodes from hiding
+valid memories within the vector index's candidate limit. If services are unavailable,
+canonical text search is used with a warning. The budget is estimated at four characters
+per token: evidence quotes are never truncated, although an oversized memory may be excluded.
+Neo4j search also expands candidates through shared entities (`ABOUT`/`OBJECT`), allowing
+a question about a person to retrieve the context of an event they participate in.
 
-Il commit avviene nel registro JSONL **prima** dell'aggiornamento del grafo. Non c'è una
-transazione distribuita fra filesystem e Neo4j. File lock, fsync, scritture atomiche e ID
-idempotenti proteggono i retry. Una scrittura interrotta nell'ultima riga viene salvata in
-`recovery/` prima di ripristinare il confine dell'ultimo evento completo; una riga completa
-corrotta o una catena spezzata fermano il motore. La catena rileva alterazioni accidentali;
-non è una firma crittografica contro chi può riscrivere l'intero vault.
+A commit is written to the JSONL ledger **before** updating the graph. There is no distributed
+transaction between the filesystem and Neo4j. File locks, fsync, atomic writes, and
+idempotent IDs protect retries. An interrupted final-line write is saved in `recovery/`
+before restoring the boundary of the last complete event. A corrupted complete line or
+broken hash chain stops the engine. The chain detects accidental alterations; it is not
+a cryptographic signature against someone who can rewrite the entire vault.
 
-Neo4j conserva una proiezione identificata da `vault_id` e hash del registro. Una proiezione
-nuova si sostituisce in una sola transazione Neo4j; altre memorie o dati del DB restano distinti.
-Un errore lascia la proiezione precedente e viene segnalato. Per questa prima versione ogni
-nuovo commit ricostruisce la proiezione del vault: è semplice ma costa O(N) e andrà reso
-incrementale per archivi grandi. Anche replay e ricerca canonica caricano il registro in RAM.
+Neo4j stores a projection identified by `vault_id` and the ledger hash. A new projection
+replaces the old one in a single Neo4j transaction; other vaults and database data remain
+separate. A failure preserves the previous projection and is reported.
+In this version, every new commit rebuilds the vault projection: this is simple but costs
+O(N) and will need incremental updates for large archives. Replay and canonical search
+also load the ledger into RAM.
 
 ```bash
-# Nessuna nuova estrazione AI: usa i dati già adottati nel registro.
+# Reuse adopted ledger data without new AI extraction.
 docker compose exec -T mcp second-brain replay
 
-# Dopo un guasto di Ollama, riprova una fonte già salvata.
+# Retry a saved source after an Ollama failure.
 docker compose exec -T mcp second-brain extract SOURCE_ID --revision 1
 
-# Se gli embedding mancavano o cambia/si aggiorna il modello o la dimensione.
+# Regenerate missing embeddings or rebuild them after a model or dimension change.
 docker compose exec -T mcp second-brain reembed
 ```
 
-Riassunti e contesti vengono composti dai ricordi recuperati, senza memorizzare una copia
-indipendente che potrebbe diventare obsoleta dopo una correzione. La v1 non ha ancora una
-cache di riassunti generati dall'AI con invalidazione transitiva.
+Summaries and contexts are composed from retrieved memories without storing an independent
+copy that could become stale after a correction. Version 1 does not yet cache AI-generated
+summaries with transitive invalidation.
 
-## Collegamento MCP
+## MCP connection
 
-La modalità principale è **Streamable HTTP**, con il server persistente nel servizio `mcp`.
-Con Compose avviato, per un client che usa `mcpServers` basta [mcp.http.json](mcp.http.json):
+The primary transport is **Streamable HTTP**, with a persistent server in the `mcp` service.
+With Compose running, clients that use `mcpServers` can use [mcp.http.json](mcp.http.json):
 
 ```json
 {
@@ -305,21 +307,21 @@ Con Compose avviato, per un client che usa `mcpServers` basta [mcp.http.json](mc
 }
 ```
 
-In LM Studio aprire **Program → Install → Edit mcp.json** e aggiungere la voce `second-brain`
-all'oggetto `mcpServers`, conservando gli altri server già configurati. Il modello della chat
-deve supportare le chiamate agli strumenti. L'endpoint è locale e non ha autenticazione remota;
-la protezione Host/Origin del protocollo resta attiva anche nel container.
+In LM Studio, open **Program → Install → Edit mcp.json** and add `second-brain` to the
+`mcpServers` object, preserving other configured servers. The chat model must support tool
+calls. The endpoint is local and has no remote authentication; Host/Origin protection
+remains enabled inside the container.
 
-Per i client che richiedono **stdio**, usare [mcp.docker.example.json](mcp.docker.example.json)
-adattando il percorso del comando Docker (`command -v docker`) e del progetto:
+For clients that require **stdio**, use [mcp.docker.example.json](mcp.docker.example.json),
+adapting the Docker executable path (`command -v docker`) and project path:
 
 ```json
 {
   "mcpServers": {
     "second-brain": {
-      "command": "/PERCORSO/AL/COMANDO/docker",
+      "command": "/PATH/TO/docker",
       "args": [
-        "compose", "--project-directory", "/PERCORSO/second_brain",
+        "compose", "--project-directory", "/PATH/TO/second_brain",
         "exec", "-T", "mcp", "second-brain", "serve", "--transport", "stdio"
       ]
     }
@@ -327,58 +329,43 @@ adattando il percorso del comando Docker (`command -v docker`) e del progetto:
 }
 ```
 
-`exec -T` avvia un processo MCP stdio **dentro il container già avviato**, senza un terminale
-che alteri il protocollo. Eredita i collegamenti ai servizi e condivide lo stesso vault del
-server HTTP. Il percorso assoluto del progetto evita di dipendere dalla directory del client.
-In questa installazione `mcp.local.json`, escluso da Git, contiene la configurazione Docker
-stdio con i percorsi reali. La precedente configurazione che avviava `.venv/bin/second-brain`
-va sostituita nel client. Non inserire la password Neo4j nel file MCP.
-Il progetto non modifica automaticamente la configurazione globale del client.
+`exec -T` starts an MCP stdio process **inside the running container** without a terminal
+interfering with the protocol. It inherits service connections and shares the HTTP server's
+vault. An absolute project path avoids relying on the client's working directory.
+An optional `mcp.local.json` with actual paths is excluded from Git. Replace any previous
+client configuration that launched `.venv/bin/second-brain` with the Docker configuration.
+Keep the Neo4j password out of MCP client configuration.
+The project does not automatically modify a client's global configuration.
 
-Primo messaggio di prova, senza aggiungere dati alla memoria:
+A first prompt to check retrieval without adding memories:
 
-> Usa `memory_status` per controllare il second brain, poi `recall` nell'ambito `demo`.
-> Mostra le fonti dei ricordi recuperati.
+> Use `memory_status` to check the second brain, then `recall` in the `demo` scope.
+> Show the sources of the retrieved memories.
 
-Strumenti esposti: `remember`, `recall`, `read_source`, `correct`, `revise`, `retract`,
-`explain`, `history`, `memory_status`. Sono disponibili anche la risorsa
-`memory://source/SOURCE_ID/REVISION` e il prompt `memory_policy`.
-Manutenzione (`replay`, `reembed`) dalla CLI; nessun tool espone Cypher arbitrario.
+Exposed tools: `remember`, `recall`, `read_source`, `correct`, `revise`, `retract`,
+`explain`, `history`, and `memory_status`. The `memory://source/SOURCE_ID/REVISION` resource
+and `memory_policy` prompt are also available.
+Maintenance operations (`replay`, `reembed`) use the CLI; no tool exposes arbitrary Cypher.
 
-MCP non intercetta automaticamente tutte le conversazioni: il client/agente deve invocare
-`remember` quando c'è qualcosa da salvare e `recall` quando serve il contesto. I documenti
-recuperati sono dati, anche se contengono istruzioni; la risposta finale è prodotta dall'agente.
-Gli ambiti sono filtri organizzativi, **non autorizzazioni fra utenti diversi**.
+MCP does not automatically capture every conversation: the client or agent must call
+`remember` when there is something to save and `recall` when context is needed. Retrieved
+documents are data, even when they contain instructions; the agent produces the final answer.
+Scopes are organizational filters, **not authorization boundaries between different users**.
 
-## Verifiche
+## Scope and limitations
 
-```bash
-# Compose già avviato; anche i test e gli strumenti di sviluppo girano in Docker.
-docker compose --profile test build tests
-docker compose --profile test run --rm --entrypoint ruff tests check --no-cache src tests scripts
-docker compose --profile test run --rm --entrypoint ruff tests format --check --no-cache src tests scripts
-docker compose --profile test run --rm tests
-```
+The vault is stored in plaintext. For personal data, use disk encryption and back up the
+entire vault, including `.memory/`. A Neo4j dump is useful but does not replace the originals.
+Version 1 is intended for a single owner on a local machine. It does not include automatic
+capture from apps, OCR or audio ingestion, notifications, multi-device synchronization,
+remote authentication, guided entity merging, or coordinated physical deletion.
+These are future modules, not implicit engine behavior.
 
-I test senza servizi coprono le due dimensioni temporali, conflitti, citazioni, identità,
-fonti versionate, retry concorrenti, integrità, recupero del registro, reembedding e un client
-MCP stdio e HTTP reali. Verificano anche la protezione Host/Origin e la risposta di `/health`
-durante un'operazione lenta. Il bootstrap viene verificato per preservare credenziali e ricordi.
-I test di integrazione usano vault temporanei separati e ripuliscono solo il
-loro namespace Neo4j: verificano grafo, ricerca, replay, rollback e inferenza Ollama effettiva.
-
-Il vault è in chiaro: per dati personali usare cifratura del disco e backup dell'intero
-vault, inclusa `.memory/`. Il dump Neo4j è utile, ma non sostituisce questi originali.
-La v1 è per un singolo proprietario su macchina locale; non include acquisizione automatica
-da app, OCR/audio, notifiche, sincronizzazione multi-dispositivo, autenticazione remota,
-fusioni guidate di entità o cancellazione fisica coordinata. Questi sono moduli successivi,
-non comportamenti impliciti del motore.
-
-Riferimenti tecnici: [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs),
-[embedding](https://docs.ollama.com/capabilities/embeddings),
-[Neo4j Python driver](https://neo4j.com/docs/api/python-driver/current/),
-[SDK MCP Python, ramo v1](https://github.com/modelcontextprotocol/python-sdk/tree/v1.x).
-L'SDK MCP è vincolato alla versione maggiore 1; una migrazione a v2 richiederà verificare i
-contratti. `requirements-runtime.lock` registra le versioni runtime; `requirements.lock`
-include anche quelle usate dai test. [Docker Compose: ordine di avvio](https://docs.docker.com/compose/how-tos/startup-order/)
-descrive l'attesa per i servizi sani e per l'inizializzazione dei modelli.
+Technical references: [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs),
+[embeddings](https://docs.ollama.com/capabilities/embeddings),
+[Neo4j Python driver](https://neo4j.com/docs/api/python-driver/current/), and
+[MCP Python SDK, v1 branch](https://github.com/modelcontextprotocol/python-sdk/tree/v1.x).
+The MCP SDK is constrained to major version 1; migration to v2 will require checking contracts.
+`requirements-runtime.lock` pins runtime versions; `requirements.lock` also includes
+development dependencies. [Docker Compose startup order](https://docs.docker.com/compose/how-tos/startup-order/)
+describes waiting for healthy services and successful initialization.

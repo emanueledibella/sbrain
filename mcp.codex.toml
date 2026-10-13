@@ -1,4 +1,4 @@
-# Copiare questa sezione nella configurazione Codex, conservando le altre impostazioni.
+# Copy this section into your Codex configuration, preserving other settings.
 [mcp_servers.second-brain]
 url = "http://127.0.0.1:8000/mcp"
 tool_timeout_sec = 600

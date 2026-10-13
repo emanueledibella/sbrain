@@ -35,15 +35,15 @@ def live_graph_engine(tmp_path, clock):
 @pytest.mark.integration
 def test_live_neo4j_projection_relations_search_and_temporal_replay(live_graph_engine, clock):
     engine = live_graph_engine
-    result = engine.remember("La gita va a Palermo.", extraction=extraction())
+    result = engine.remember("The trip goes to Palermo.", extraction=extraction())
     assert not result["warnings"], result
     clock.set("2026-10-14T10:00:00Z")
     changed = engine.change(
         result["claim_ids"][0],
         kind="update",
         value="Catania",
-        statement="La gita va a Catania.",
-        reason="Cambio programma",
+        statement="The trip goes to Catania.",
+        reason="Change of plans",
         effective_at="2026-10-13T10:00:00Z",
     )
     assert not changed["warnings"], changed
@@ -55,7 +55,7 @@ def test_live_neo4j_projection_relations_search_and_temporal_replay(live_graph_e
     )
     assert len(rows) == 3
     assert {r["value"] for r in rows} == {"Palermo", "Catania"}
-    recalled = engine.recall("destinazione gita", valid_at="2026-10-12T12:00:00Z")
+    recalled = engine.recall("trip destination", valid_at="2026-10-12T12:00:00Z")
     assert not recalled["warnings"], recalled
     assert {c["value"] for c in recalled["memories"]} == {"Palermo"}
     # Delete only this disposable test vault's projection, then recover from canonical records.
@@ -73,7 +73,7 @@ def test_live_neo4j_projection_relations_search_and_temporal_replay(live_graph_e
 @pytest.mark.integration
 def test_live_neo4j_projection_rolls_back_on_failure(live_graph_engine):
     engine = live_graph_engine
-    engine.remember("La gita va a Palermo.", extraction=extraction())
+    engine.remember("The trip goes to Palermo.", extraction=extraction())
     with engine.vault.transaction() as events:
         state = State(events)
     # A nested object is not a legal Neo4j property; error after DELETE must roll it back.
@@ -91,7 +91,7 @@ def test_live_neo4j_projection_rolls_back_on_failure(live_graph_engine):
 @pytest.mark.integration
 def test_live_neo4j_separate_vault_is_not_deleted(live_graph_engine, tmp_path):
     engine = live_graph_engine
-    engine.remember("La gita va a Palermo.", extraction=extraction())
+    engine.remember("The trip goes to Palermo.", extraction=extraction())
     other = MemoryEngine(
         engine.settings.model_copy(update={"vault_path": tmp_path / "other"}),
         models=LocalVectors(),
@@ -99,7 +99,8 @@ def test_live_neo4j_separate_vault_is_not_deleted(live_graph_engine, tmp_path):
     )
     try:
         result = other.remember(
-            "La gita va a Catania.", extraction=extraction("La gita va a Catania.", value="Catania")
+            "The trip goes to Catania.",
+            extraction=extraction("The trip goes to Catania.", value="Catania"),
         )
         assert not result["warnings"]
         engine.replay()
@@ -109,7 +110,7 @@ def test_live_neo4j_separate_vault_is_not_deleted(live_graph_engine, tmp_path):
             )[0]["n"]
             == 1
         )
-        assert {c["value"] for c in engine.recall("gita")["memories"]} == {"Palermo"}
+        assert {c["value"] for c in engine.recall("trip")["memories"]} == {"Palermo"}
     finally:
         other.graph.query("MATCH (n) WHERE n.vault_id=$vault DETACH DELETE n", vault=other.vault.id)
         other.close()
@@ -121,7 +122,7 @@ def test_live_ollama_structured_extraction_and_embeddings(tmp_path):
         pytest.skip("Set SB_TEST_OLLAMA=1 to run actual local inference")
     settings = Settings(vault_path=tmp_path / "ollama")
     models = Ollama(settings)
-    text = "La destinazione della gita è Palermo."
+    text = "The trip destination is Palermo."
     source = SourceRevision(
         source_id=uid(),
         revision=1,
@@ -137,7 +138,7 @@ def test_live_ollama_structured_extraction_and_embeddings(tmp_path):
     MemoryEngine._validate_evidence(draft, text)
     assert draft.claims, "The actual local model must extract this explicit simple fact"
     assert any("Palermo" in c.value for c in draft.claims)
-    embeddings = models.embed(["La gita va a Palermo.", "Dove andremo in gita?"])
+    embeddings = models.embed(["The trip goes to Palermo.", "Where are we going on the trip?"])
     assert len(embeddings) == 2
     assert len(embeddings[0]) == settings.embedding_dimensions
 
@@ -148,10 +149,10 @@ def test_live_engine_end_to_end(tmp_path):
         pytest.skip("Set SB_TEST_NEO4J=1 and SB_TEST_OLLAMA=1 for complete local path")
     engine = MemoryEngine(Settings(vault_path=tmp_path / "end-to-end"))
     try:
-        result = engine.remember("La destinazione della gita è Palermo.", scope="test")
+        result = engine.remember("The trip destination is Palermo.", scope="test")
         assert result["status"] == "indexed", result
         assert result["claim_ids"]
-        recalled = engine.recall("Dove andremo in gita?", scope="test")
+        recalled = engine.recall("Where are we going on the trip?", scope="test")
         assert not recalled["warnings"], recalled
         assert any(c["value"] == "Palermo" for c in recalled["memories"])
         original = engine.explain(result["claim_ids"][0])
@@ -160,18 +161,17 @@ def test_live_engine_end_to_end(tmp_path):
             original["id"],
             kind="correction",
             value="Catania",
-            statement="La destinazione della gita è Catania.",
-            reason="Correzione esplicita",
+            statement="The trip destination is Catania.",
+            reason="Explicit correction",
         )
         assert not correction["warnings"]
         assert {
-            c["value"] for c in engine.recall("destinazione gita", scope="test")["memories"]
+            c["value"] for c in engine.recall("trip destination", scope="test")["memories"]
         } == {"Catania"}
-        past = engine.recall("destinazione gita", scope="test", known_at=before)
+        past = engine.recall("trip destination", scope="test", known_at=before)
         assert {c["value"] for c in past["memories"]} == {"Palermo"}
         assert (
-            engine.read_source(result["source_id"], 1)["text"]
-            == "La destinazione della gita è Palermo."
+            engine.read_source(result["source_id"], 1)["text"] == "The trip destination is Palermo."
         )
     finally:
         engine.graph.query(
@@ -183,29 +183,29 @@ def test_live_engine_end_to_end(tmp_path):
 @pytest.mark.integration
 def test_live_graph_expands_context_through_object(live_graph_engine):
     engine = live_graph_engine
-    note = "Marco verrà. La destinazione è Palermo."
+    note = "Marco will join. The destination is Palermo."
     result = engine.remember(
         note,
         extraction={
             "entities": [
                 {"ref": "m", "name": "Marco", "kind": "person"},
-                {"ref": "g", "name": "Gita", "kind": "event"},
+                {"ref": "g", "name": "Trip", "kind": "event"},
             ],
             "claims": [
                 {
                     "subject_ref": "m",
                     "object_ref": "g",
                     "predicate": "participates_in",
-                    "value": "sì",
-                    "statement": "Marco verrà.",
-                    "quote": "Marco verrà.",
+                    "value": "yes",
+                    "statement": "Marco will join.",
+                    "quote": "Marco will join.",
                 },
                 {
                     "subject_ref": "g",
                     "predicate": "destination",
                     "value": "Palermo",
-                    "statement": "La destinazione è Palermo.",
-                    "quote": "La destinazione è Palermo.",
+                    "statement": "The destination is Palermo.",
+                    "quote": "The destination is Palermo.",
                 },
             ],
         },
@@ -240,7 +240,7 @@ def test_ollama_repairs_invalid_entity_references_once(monkeypatch):
         observed_at=instant("2026-10-12T10:00:00Z"),
         recorded_at=instant("2026-10-12T10:00:00Z"),
     )
-    assert models.extract("La gita va a Palermo.", source, []).claims[0].value == "Palermo"
+    assert models.extract("The trip goes to Palermo.", source, []).claims[0].value == "Palermo"
     assert len(bodies) == 2
     assert bodies[0]["format"]["required"] == ["entities", "claims"]
     assert "unknown entity" in bodies[1]["messages"][-1]["content"]
@@ -267,7 +267,7 @@ def test_ollama_does_not_retry_validation_forever(monkeypatch):
         recorded_at=instant("2026-10-12T10:00:00Z"),
     )
     with pytest.raises(ValueError):
-        models.extract("La gita va a Palermo.", source, [])
+        models.extract("The trip goes to Palermo.", source, [])
     assert len(calls) == 2
 
 

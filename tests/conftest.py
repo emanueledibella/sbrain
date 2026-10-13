@@ -32,7 +32,7 @@ def engine(tmp_path, clock):
 
 
 def extraction(
-    text="La gita va a Palermo.",
+    text="The trip goes to Palermo.",
     *,
     value="Palermo",
     existing_id=None,
@@ -40,7 +40,7 @@ def extraction(
     context="destination",
 ):
     return {
-        "entities": [{"ref": "trip", "name": "Gita", "kind": "event", "existing_id": existing_id}],
+        "entities": [{"ref": "trip", "name": "Trip", "kind": "event", "existing_id": existing_id}],
         "claims": [
             {
                 "subject_ref": "trip",
@@ -57,4 +57,4 @@ def extraction(
 
 @pytest.fixture
 def memory(engine):
-    return engine.remember("La gita va a Palermo.", extraction=extraction())
+    return engine.remember("The trip goes to Palermo.", extraction=extraction())

@@ -33,7 +33,7 @@ def initialize(root: Path) -> None:
         temp.unlink(missing_ok=True)
     env_file.chmod(0o600)
     (root / "vault").mkdir(exist_ok=True, mode=0o700)
-    print("Configurazione Docker pronta: .env e vault; password esistente conservata.")
+    print("Docker configuration ready: .env and vault; existing password preserved.")
 
 
 if __name__ == "__main__":

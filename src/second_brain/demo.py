@@ -5,50 +5,52 @@ from .engine import MemoryEngine
 
 def run_demo(engine: MemoryEngine) -> dict:
     text = (
-        "# Esempio inventato\n\n"
-        "La destinazione della gita è Palermo.\n"
-        "Marco non partecipa alla gita.\n"
-        "Forse visiteremo un museo.\n"
+        "# Fictional example\n\n"
+        "The trip destination is Palermo.\n"
+        "Marco is not joining the trip.\n"
+        "We might visit a museum.\n"
     )
     remembered = engine.remember(
         text,
-        title="DEMO: gita (informazioni inventate)",
+        title="DEMO: trip (fictional information)",
         scope="demo",
         observed_at="2026-10-01T10:00:00+02:00",
-        request_id="demo-source-v1",
+        request_id="demo-source-en-v2",
         extraction={
-            "entities": [{"ref": "trip", "name": "Gita dimostrativa", "kind": "event"}],
+            "entities": [{"ref": "trip", "name": "Demo trip", "kind": "event"}],
             "claims": [
                 {
                     "subject_ref": "trip",
                     "predicate": "destination",
                     "value": "Palermo",
                     "context": "destination",
-                    "statement": "La destinazione della gita è Palermo.",
-                    "quote": "La destinazione della gita è Palermo.",
+                    "statement": "The trip destination is Palermo.",
+                    "quote": "The trip destination is Palermo.",
                 },
                 {
                     "subject_ref": "trip",
                     "predicate": "participation",
                     "value": "Marco: no",
                     "context": "Marco",
-                    "statement": "Marco non partecipa alla gita.",
-                    "quote": "Marco non partecipa alla gita.",
+                    "statement": "Marco is not joining the trip.",
+                    "quote": "Marco is not joining the trip.",
                 },
                 {
                     "subject_ref": "trip",
                     "predicate": "activity",
-                    "value": "museo",
+                    "value": "museum",
                     "epistemic": "proposed",
-                    "statement": "Forse visiteremo un museo.",
-                    "quote": "Forse visiteremo un museo.",
+                    "statement": "We might visit a museum.",
+                    "quote": "We might visit a museum.",
                 },
             ],
         },
     )
     if not remembered["claim_ids"]:
         return remembered
-    claims = engine.history(scope="demo")["claims"]
+    claims = [
+        c for c in engine.history(scope="demo")["claims"] if c["id"] in remembered["claim_ids"]
+    ]
     first = next(c for c in claims if c["predicate"] == "destination" and c["value"] == "Palermo")
     participant = next(
         c for c in claims if c["predicate"] == "participation" and c["value"] == "Marco: no"
@@ -57,29 +59,29 @@ def run_demo(engine: MemoryEngine) -> dict:
         first["id"],
         kind="update",
         value="Catania",
-        statement="Dal 4 ottobre la destinazione della gita è Catania.",
+        statement="From October 4, the trip destination is Catania.",
         effective_at="2026-10-04T10:00:00+02:00",
-        reason="DEMO: cambiamento di programma",
-        request_id="demo-update-v1",
+        reason="DEMO: change of plans",
+        request_id="demo-update-en-v2",
     )
     before = engine.explain(updated["replacement_id"])["recorded_at"]
     corrected = engine.change(
         participant["id"],
         kind="correction",
-        value="Marco: sì",
-        statement="Marco partecipa alla gita.",
-        reason="DEMO: correggo l'informazione errata iniziale",
-        request_id="demo-correction-v1",
+        value="Marco: yes",
+        statement="Marco is joining the trip.",
+        reason="DEMO: correcting the initial mistaken information",
+        request_id="demo-correction-en-v2",
     )
     after = engine.explain(corrected["replacement_id"])["recorded_at"]
     results = {}
     for name, valid, known in (
-        ("prima_del_cambio", "2026-10-02T12:00:00+02:00", after),
-        ("dopo_il_cambio_prima_della_correzione", "2026-10-06T12:00:00+02:00", before),
-        ("dopo_la_correzione", "2026-10-06T12:00:00+02:00", after),
+        ("before_change", "2026-10-02T12:00:00+02:00", after),
+        ("after_change_before_correction", "2026-10-06T12:00:00+02:00", before),
+        ("after_correction", "2026-10-06T12:00:00+02:00", after),
     ):
         result = engine.recall(
-            "gita Marco destinazione", scope="demo", valid_at=valid, known_at=known
+            "trip Marco destination", scope="demo", valid_at=valid, known_at=known
         )
         results[name] = [
             {"value": c["value"], "source": c["evidence"][0]["source_id"]}

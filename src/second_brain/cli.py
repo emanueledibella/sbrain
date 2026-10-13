@@ -56,6 +56,7 @@ def parser() -> argparse.ArgumentParser:
     rec = sub.add_parser("recall")
     rec.add_argument("query")
     rec.add_argument("--scope")
+    rec.add_argument("--entity-id", help="Restrict results to an exact subject/object identity")
     rec.add_argument("--valid-at")
     rec.add_argument("--known-at")
     rec.add_argument("--include-uncertain", action="store_true")
@@ -177,6 +178,7 @@ def dispatch(args, engine: MemoryEngine):
         return engine.recall(
             args.query,
             scope=args.scope,
+            entity_id=args.entity_id,
             valid_at=args.valid_at,
             known_at=args.known_at,
             include_uncertain=args.include_uncertain,

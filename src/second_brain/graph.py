@@ -254,6 +254,7 @@ class Neo4jGraph:
         valid_at=None,
         known_at=None,
         include_uncertain: bool = False,
+        claim_ids: list[str] | None = None,
     ) -> dict[str, float]:
         valid = instant(valid_at).isoformat()
         known = instant(known_at).isoformat()
@@ -265,7 +266,8 @@ class Neo4jGraph:
                 f"OR datetime($known)<datetime({node}.recorded_to)) "
                 f"AND datetime({node}.valid_from)<=datetime($valid) "
                 f"AND ({node}.valid_to IS NULL OR datetime($valid)<datetime({node}.valid_to)) "
-                f"AND ($uncertain OR {node}.epistemic='explicit')"
+                f"AND ($uncertain OR {node}.epistemic='explicit') "
+                f"AND ($claims IS NULL OR {node}.claim_id IN $claims)"
             )
 
         scores: dict[str, float] = {}
@@ -285,6 +287,7 @@ class Neo4jGraph:
                 valid=valid,
                 known=known,
                 uncertain=include_uncertain,
+                claims=claim_ids,
                 limit=limit,
             )
         for rank, row in enumerate(rows):
@@ -305,6 +308,7 @@ class Neo4jGraph:
                 valid=valid,
                 known=known,
                 uncertain=include_uncertain,
+                claims=claim_ids,
             )
             for rank, row in enumerate(rows):
                 scores[row["id"]] = scores.get(row["id"], 0) + 1 / (60 + rank)
@@ -324,6 +328,7 @@ class Neo4jGraph:
                 valid=valid,
                 known=known,
                 uncertain=include_uncertain,
+                claims=claim_ids,
                 limit=limit,
             )
             for neighbor in neighbors:

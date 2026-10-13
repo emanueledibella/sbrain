@@ -23,7 +23,12 @@ READ_TOKEN = "read-test-token-" + "r" * 32
 async def transport_client(tmp_path, transport, *, requests_per_minute=120, details=None):
     args = ["-m", "second_brain", "--vault", str(tmp_path / "mcp-vault"), "--offline", "serve"]
     if transport == "stdio":
-        async with stdio_client(StdioServerParameters(command=sys.executable, args=args)) as rw:
+        # The SDK's default environment excludes PYTHONPATH. Keep source overrides
+        # used by the Docker test runner in the child process as well.
+        env = {"PYTHONPATH": os.environ["PYTHONPATH"]} if "PYTHONPATH" in os.environ else None
+        async with stdio_client(
+            StdioServerParameters(command=sys.executable, args=args, env=env)
+        ) as rw:
             yield rw
         return
     with socket.socket() as sock:
@@ -225,6 +230,10 @@ async def test_http_credentials_enforce_read_and_write_permissions(engine):
         assert not saved.json()["result"]["isError"]
         assert engine.status()["claims"] == 1
         for tool, args in (
+            (
+                "extract_source",
+                {"source_id": saved.json()["result"]["structuredContent"]["source_id"]},
+            ),
             (
                 "retract",
                 {

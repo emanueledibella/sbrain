@@ -24,6 +24,6 @@ class Settings(BaseSettings):
     max_source_chars: int = Field(default=24000, ge=100, le=200000)
     mcp_read_token: SecretStr = SecretStr("")
     mcp_write_token: SecretStr = SecretStr("")
-    mcp_requests_per_minute: int = Field(default=120, ge=1, le=10000)
+    mcp_requests_per_minute: int = Field(default=300, ge=1, le=10000)
     mcp_max_inflight: int = Field(default=8, ge=1, le=128)
     mcp_max_body_bytes: int = Field(default=2097152, ge=1024, le=16777216)

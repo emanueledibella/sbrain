@@ -1,6 +1,23 @@
 import re
 
-from .models import Extraction, instant
+from .models import Entity, Extraction, canonical_id, instant
+
+
+def validate_entity_references(draft: Extraction, entities: list[Entity], scope: str):
+    """Only explicitly offered, exact identities may be reused; never fuzzy-merge names."""
+    allowed = {(e.id, e.name.casefold(), e.kind) for e in entities if e.scope == scope}
+    used = {c.subject_ref for c in draft.claims} | {
+        c.object_ref for c in draft.claims if c.object_ref
+    }
+    for entity in draft.entities:
+        if entity.ref not in used or not entity.existing_id:
+            continue
+        if (canonical_id(entity.existing_id), entity.name.casefold(), entity.kind) not in allowed:
+            raise ValueError(
+                f"Ambiguous or cross-scope entity identity for ref {entity.ref!r}; "
+                "reuse only an offered existing_id with its exact name and kind, "
+                "otherwise set existing_id=null to create a new entity"
+            )
 
 
 def statement_signals(statement: str) -> tuple[bool, bool]:

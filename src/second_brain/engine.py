@@ -25,7 +25,7 @@ from .models import (
 from .ollama import Ollama
 from .state import State, overlaps
 from .store import Vault, atomic_write
-from .validation import validate_extraction
+from .validation import validate_entity_references, validate_extraction
 
 _profile_ids: ContextVar[set | None] = ContextVar("profile_ids", default=None)
 _source_cache: ContextVar[dict | None] = ContextVar("verified_sources", default=None)
@@ -170,9 +170,10 @@ class MemoryEngine:
             source = self._source(state, source_id, revision)
             extracted = source.key in state.extracted
             text = self.vault.read(source)
-            known_entities = [e for e in state.entities.values() if e.scope == source.scope]
+            covered = state.extraction_cover(source)
+            known_entities = self._identity_candidates(state, source.scope)
         warnings = []
-        if not extracted:
+        if not extracted and not covered:
             try:
                 if extraction is None:
                     if self.models is None:
@@ -183,7 +184,7 @@ class MemoryEngine:
                     provenance = {
                         "origin": "local_model",
                         "model": self.settings.chat_model,
-                        "extractor_version": 2,
+                        "extractor_version": 3,
                     }
                     if hasattr(self.models, "provenance"):
                         provenance.update(self.models.provenance())
@@ -193,11 +194,13 @@ class MemoryEngine:
                 validate_extraction(
                     draft, text, observed_at=source.observed_at, semantic_checks=extraction is None
                 )
+                validate_entity_references(draft, known_entities, source.scope)
                 vectors, embed_warnings = self._vectors([c.statement for c in draft.claims])
                 warnings.extend(embed_warnings)
                 with self.vault.transaction() as events:
                     state = self._state(events)
-                    if source.key not in state.extracted:
+                    covered = state.extraction_cover(source)
+                    if source.key not in state.extracted and not covered:
                         entities, claims = self._adopt(draft, source, text, state, vectors)
                         for claim in claims:
                             claim.provenance = {**provenance, "source_sha256": source.sha256}
@@ -218,19 +221,42 @@ class MemoryEngine:
                         )
                     state = self._state(events)
             except Exception as exc:
-                # Only pre-commit extraction errors have this status. View failures are separate.
                 warnings.append(warning("Extraction rejected or unavailable", exc))
-                warnings.extend(self._materialize(state))
-                return {
-                    "source_id": source.source_id,
-                    "revision": source.revision,
-                    "status": "stored_pending_extraction",
-                    "claim_ids": [],
-                    "warnings": warnings,
-                }
+                # Another writer may have completed this source while inference failed.
+                with self.vault.transaction() as events:
+                    state = self._state(events)
+                    covered = state.extraction_cover(source)
+                if source.key not in state.extracted and not covered:
+                    warnings.extend(self._materialize(state))
+                    return {
+                        "source_id": source.source_id,
+                        "revision": source.revision,
+                        "status": "stored_pending_extraction",
+                        "claim_ids": [],
+                        "warnings": warnings,
+                    }
         warnings.extend(self._sync(state))
         warnings.extend(self._materialize(state))
+        if covered:
+            self.vault.read(covered)
+            result = self._ingest_result(state, covered, warnings)
+            result.update(
+                status="superseded",
+                revision=source.revision,
+                indexed_revision=covered.revision,
+                superseded_by=covered.key,
+            )
+            return result
         return self._ingest_result(state, source, warnings)
+
+    def _identity_candidates(self, state: State, scope: str) -> list[Entity]:
+        at = instant(self.clock())
+        return [
+            entity.model_copy(update={"name": name})
+            for entity in state.entities.values()
+            if entity.scope == scope
+            for name in sorted(state.names(entity.id, at, at))
+        ]
 
     @staticmethod
     def _validate_evidence(draft: Extraction, text: str):
@@ -244,6 +270,10 @@ class MemoryEngine:
         state: State,
         vectors: list[list[float]],
     ) -> tuple[list[Entity], list[Claim]]:
+        # Recheck against the latest state under the writer lock after inference.
+        validate_entity_references(
+            draft, self._identity_candidates(state, source.scope), source.scope
+        )
         entities = []
         refs = {}
         used_refs = {c.subject_ref for c in draft.claims} | {
@@ -254,23 +284,7 @@ class MemoryEngine:
                 continue
             if entity.existing_id:
                 identifier = canonical_id(entity.existing_id)
-                existing = state.entities.get(identifier)
-                if (
-                    existing is None
-                    or existing.scope != source.scope
-                    or entity.name.casefold()
-                    not in {
-                        n.casefold()
-                        for n in state.names(
-                            identifier, instant(self.clock()), instant(self.clock())
-                        )
-                    }
-                    or existing.kind != entity.kind
-                ):
-                    raise ValueError(
-                        "Ambiguous or cross-scope entity identity; create a new entity"
-                    )
-                adopted = existing
+                adopted = state.entities[identifier]
             else:
                 adopted = Entity(id=uid(), name=entity.name, kind=entity.kind, scope=source.scope)
                 entities.append(adopted)
@@ -675,6 +689,7 @@ class MemoryEngine:
         query: str,
         *,
         scope: str | None = None,
+        entity_id: str | None = None,
         valid_at: str | datetime | None = None,
         known_at: str | datetime | None = None,
         include_uncertain: bool = False,
@@ -685,12 +700,26 @@ class MemoryEngine:
             raise ValueError("Query must be nonempty, at most 2000 chars; limit must be 1–100")
         if not 256 <= token_budget <= 32000:
             raise ValueError("token_budget must be 256–32000 (approximate, 4 characters/token)")
-        vectors, warnings = self._vectors([query])
         with self.vault.transaction() as events:
             state = self._state(events)
             at = instant(self.clock())
             valid, known = instant(valid_at, at), instant(known_at, at)
         candidates = state.visible(valid, known, scope, include_uncertain)
+        identities, entity_names = state.identity_view(valid, known)
+        if entity_id is not None:
+            entity_id = canonical_id(entity_id)
+            entity = state.entities.get(entity_id)
+            if entity is None or (scope is not None and entity.scope != scope):
+                raise ValueError("Unknown entity or entity outside the requested scope")
+            identity = identities[entity_id]
+            if not entity_names[identity]:
+                raise ValueError("Entity was not known at known_at")
+            candidates = [
+                c
+                for c in candidates
+                if identity in {identities[c.subject_id], identities.get(c.object_id)}
+            ]
+        vectors, warnings = self._vectors([query])
         warnings.extend(self._sync(state))
         graph_scores = {}
         if self.graph is not None and not any(w.startswith("Neo4j projection") for w in warnings):
@@ -702,10 +731,10 @@ class MemoryEngine:
                     valid_at=valid,
                     known_at=known,
                     include_uncertain=include_uncertain,
+                    claim_ids=[c.id for c in candidates] if entity_id is not None else None,
                 )
             except Exception as exc:
                 warnings.append(warning("Neo4j search unavailable", exc))
-        identities, entity_names = state.identity_view(valid, known)
         groups = {}
         for candidate in candidates:
             key = (
@@ -794,6 +823,7 @@ class MemoryEngine:
         return {
             "query": query,
             "scope": scope,
+            "entity_id": entity_id,
             "valid_at": valid.isoformat(),
             "known_at": known.isoformat(),
             "memories": items,
@@ -1020,11 +1050,18 @@ class MemoryEngine:
     def status(self) -> dict:
         with self.vault.transaction() as events:
             state = self._state(events)
+            superseded = {
+                s.key: covered.key
+                for s in state.sources.values()
+                if s.kind not in {"memory_change", "identity_change"}
+                and (covered := state.extraction_cover(s))
+            }
             pending = [
                 s.key
                 for s in state.sources.values()
                 if s.kind not in {"memory_change", "identity_change"}
                 and s.key not in state.extracted
+                and s.key not in superseded
             ]
             result = {
                 "vault": str(self.vault.root),
@@ -1035,6 +1072,11 @@ class MemoryEngine:
                 "claims": len(state.claims),
                 "sources": len(state.sources),
                 "pending_extraction": pending,
+                "superseded_extraction": superseded,
+                "http_limits": {
+                    "requests_per_minute": self.settings.mcp_requests_per_minute,
+                    "max_inflight": self.settings.mcp_max_inflight,
+                },
                 "embeddings_missing": sum(not c.embedding for c in state.claims.values()),
             }
         for name, service in (("neo4j", self.graph), ("ollama", self.models)):

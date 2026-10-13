@@ -25,6 +25,7 @@ class State:
         self.changes = list(previous.changes) if previous else []
         self.identity_changes = list(previous.identity_changes) if previous else []
         self.extracted = set(previous.extracted) if previous else set()
+        self.extraction_index = dict(previous.extraction_index) if previous else {}
         for event in events[len(previous.events) if previous else 0 :]:
             self.entities.update({e.id: e.model_copy(deep=True) for e in event.entities})
             self.sources.update({s.key: s for s in event.sources})
@@ -112,7 +113,31 @@ class State:
                         if self.current[version.claim.id].id == version.id:
                             self.current[version.claim.id] = updated
             if event.kind == "extracted":
-                self.extracted.add(event.metadata["source_key"])
+                key = event.metadata["source_key"]
+                self.extracted.add(key)
+                source = self.sources[key]
+                fingerprint = self.source_fingerprint(source)
+                previous_source = self.extraction_index.get(fingerprint)
+                if previous_source is None or source.revision > previous_source.revision:
+                    self.extraction_index[fingerprint] = source
+
+    @staticmethod
+    def source_fingerprint(source):
+        return (
+            source.source_id,
+            source.sha256,
+            source.scope,
+            source.kind,
+            source.title,
+            source.observed_at,
+        )
+
+    def extraction_cover(self, source):
+        """An identical, later adopted revision covers an unprocessed earlier revision."""
+        if source.key in self.extracted:
+            return None
+        adopted = self.extraction_index.get(self.source_fingerprint(source))
+        return adopted if adopted and adopted.revision > source.revision else None
 
     def _identity_view(self, valid_at: datetime, known_at: datetime):
         links = {

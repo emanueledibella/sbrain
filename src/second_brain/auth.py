@@ -1,8 +1,10 @@
 """Owner-managed local bearer credentials; no remote OAuth service is required."""
 
+import logging
+import math
 import secrets
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from functools import wraps
 
 from mcp.server.auth.middleware.auth_context import get_access_token
@@ -43,8 +45,9 @@ def write_access(function):
 
 
 class RequestLimits:
-    def __init__(self, app, *, per_minute: int, max_inflight: int):
+    def __init__(self, app, *, per_minute: int, max_inflight: int, token_verifier=None):
         self.app, self.per_minute, self.max_inflight = app, per_minute, max_inflight
+        self.token_verifier = token_verifier
         self.clients = OrderedDict()
         self.inflight = 0
 
@@ -52,19 +55,38 @@ class RequestLimits:
         if scope["type"] != "http" or scope["path"] != "/mcp":
             return await self.app(scope, receive, send)
         client = (scope.get("client") or ("local",))[0]
+        principal = "anonymous"
+        if self.token_verifier is not None:
+            authorization = dict(scope.get("headers", [])).get(b"authorization", b"")
+            scheme, _, credential = authorization.partition(b" ")
+            if scheme.lower() == b"bearer":
+                token = await self.token_verifier.verify_token(credential.decode("latin-1"))
+                if token is not None:
+                    principal = token.client_id
+        client = (client, principal)
         now = time.monotonic()
-        started, count = self.clients.get(client, (now, 0))
-        if now - started >= 60:
-            started, count = now, 0
-        self.clients[client] = (started, count + 1)
+        requests = self.clients.setdefault(client, deque())
+        while requests and now - requests[0] >= 60:
+            requests.popleft()
         self.clients.move_to_end(client)
         if len(self.clients) > 1024:
             self.clients.popitem(last=False)
-        if count >= self.per_minute or self.inflight >= self.max_inflight:
+        reason, retry = None, 1
+        if len(requests) >= self.per_minute:
+            reason = "rate_limit_exceeded"
+            retry = max(1, math.ceil(60 - (now - requests[0])))
+        elif self.inflight >= self.max_inflight:
+            reason = "concurrency_limit_exceeded"
+        if reason:
+            logging.getLogger(__name__).warning("MCP request throttled: %s", reason)
             response = JSONResponse(
-                {"error": "Request limit exceeded"}, status_code=429, headers={"Retry-After": "60"}
+                {"error": reason, "retry_after_seconds": retry},
+                status_code=429,
+                headers={"Retry-After": str(retry)},
             )
             return await response(scope, receive, send)
+        # Rejected requests do not spend the remaining rate budget.
+        requests.append(now)
         self.inflight += 1
         try:
             await self.app(scope, receive, send)
@@ -81,6 +103,7 @@ class ProtectedMCP(FastMCP):
             RequestLimits,
             per_minute=self.memory_settings.mcp_requests_per_minute,
             max_inflight=self.memory_settings.mcp_max_inflight,
+            token_verifier=self._token_verifier,
         )
         return app
 

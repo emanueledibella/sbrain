@@ -1,5 +1,7 @@
 # Knowledge vocabulary, RDF, SHACL and OWL
 
+[Documentation index](README.md) · [Reasoning execution and agent decisions](reasoning.md)
+
 The memory engine includes an offline knowledge application profile with **56 domain classes
 and 99 properties**. It covers people, contacts, organizations, work, projects, tasks,
 decisions, commitments, daily activities, events, travel, education, documents, websites,
@@ -62,6 +64,10 @@ Reading OWL axioms gives an agent useful context for choosing tools and interpre
 relations. It does **not** execute a formal reasoner. Use `reason_memory` for reproducible
 deductions with evidence.
 
+The agent or another caller must explicitly request that tool. Neither `remember` nor
+`recall` runs it automatically. See the [reasoning flow](reasoning.md) for the exact call
+path and the limits of relying on agent instructions.
+
 ## Extraction and validation
 
 1. The original source is saved before any model call.
@@ -73,6 +79,10 @@ deductions with evidence.
    signatures. SHACL also checks that the referenced entities and sources share its scope.
 5. A rejected local-model response gets one repair attempt, including SHACL feedback.
    A failed batch leaves its original pending. A successful batch is adopted in the ledger.
+
+Pending extraction and missing embeddings are not retried by an autonomous background
+worker. See [reliability and recovery](reliability-and-recovery.md) for current procedures
+and the separate worker proposal.
 
 Both local-model and manually supplied extractions undergo SHACL validation. Validation
 does not prove a statement true or ensure that a model understood the source correctly.
@@ -99,6 +109,9 @@ docker compose exec -T mcp second-brain validate-knowledge --scope personal
 ```
 
 An audit can report nonconforming old representations without losing their original data.
+The extraction pipeline applies to `remember` and `extract_source`; explicit corrections
+and revisions have a separate Python validation path. See
+[temporal memory and corrections](temporal-memory-and-corrections.md).
 
 ## RDF export
 

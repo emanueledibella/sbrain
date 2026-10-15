@@ -153,6 +153,10 @@ docker compose exec -T mcp rm /tmp/note.md
 
 ## How memory is organized
 
+The [project documentation](docs/README.md) explains the architecture, storage, ingestion,
+retrieval, temporal changes, reasoning and recovery, with Mermaid flowcharts. It also
+distinguishes implemented behavior from the proposed automatic recovery worker.
+
 The engine also includes an extensible RDF/RDFS vocabulary with **56 domain classes and 99
 properties**, SHACL validation and local OWL 2 RL reasoning. It reuses references from
 Schema.org, PROV-O, SKOS, OWL-Time and ORG. The agent can inspect definitions with

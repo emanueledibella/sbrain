@@ -24,6 +24,9 @@ Use correct for a mistaken memory; revise for a real change from an effective da
 Never infer that a similar or newer claim automatically replaces an older claim.
 Writes to the memory ledger survive graph/model outages; read the returned status and warnings.
 Retry a pending saved revision with extract_source, rather than creating another source revision.
+When enabled, the persistent worker also retries incomplete extraction, embeddings and projections.
+Inspect memory_status.recovery or recovery_jobs for backlog and needs_review jobs. Use retry_job
+after investigating a repeated failure; never weaken evidence or identity checks to bypass it.
 For one precise identity, use find_entities then recall with entity_id. A similar search hit
 does not establish identity; broad semantic queries can return other related memories.
 Use knowledge_schema to inspect canonical vocabulary, aliases, signatures and OWL axioms.
@@ -237,6 +240,27 @@ def create_server(engine: MemoryEngine, *, host: str = "127.0.0.1", port: int = 
     async def memory_status() -> dict[str, Any]:
         """Check canonical storage, pending extraction and local services."""
         return await to_thread.run_sync(engine.status)
+
+    @mcp.tool(annotations=read)
+    async def recovery_jobs(
+        status: Literal["pending", "running", "retry_wait", "done", "needs_review"] | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Inspect persistent recovery jobs, attempt counts and redacted error codes.
+
+        Requires an enabled recovery queue. Follow next_offset for more jobs.
+        """
+        return await to_thread.run_sync(partial(engine.recovery_jobs, status, limit, offset))
+
+    @mcp.tool(annotations=write)
+    @write_access
+    async def retry_job(job_id: str) -> dict[str, Any]:
+        """Requeue a pending/retry/needs_review job after investigation; reset attempts.
+
+        This schedules work without changing source evidence or adopting new claims itself.
+        """
+        return await to_thread.run_sync(partial(engine.retry_job, job_id))
 
     @mcp.tool(annotations=read)
     async def knowledge_schema(

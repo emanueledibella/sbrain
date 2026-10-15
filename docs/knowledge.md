@@ -80,9 +80,10 @@ path and the limits of relying on agent instructions.
 5. A rejected local-model response gets one repair attempt, including SHACL feedback.
    A failed batch leaves its original pending. A successful batch is adopted in the ledger.
 
-Pending extraction and missing embeddings are not retried by an autonomous background
-worker. See [reliability and recovery](reliability-and-recovery.md) for current procedures
-and the separate worker proposal.
+Compose runs an independent worker that retries pending extraction, missing/incompatible
+embeddings and stale projections through persistent SQLite jobs. Repeated failures require
+review. See [reliability and recovery](reliability-and-recovery.md) for configuration and
+restart semantics. The worker does not automatically execute or save OWL deductions.
 
 Both local-model and manually supplied extractions undergo SHACL validation. Validation
 does not prove a statement true or ensure that a model understood the source correctly.
@@ -214,9 +215,14 @@ services:
       SB_VOCABULARY_EXTENSION_PATH: /etc/sbrain/vocabulary-extension.json
     volumes:
       - ./.runtime/vocabulary-extension.json:/etc/sbrain/vocabulary-extension.json:ro
+  worker:
+    environment:
+      SB_VOCABULARY_EXTENSION_PATH: /etc/sbrain/vocabulary-extension.json
+    volumes:
+      - ./.runtime/vocabulary-extension.json:/etc/sbrain/vocabulary-extension.json:ro
 ```
 
-Apply it with `docker compose -f compose.yaml -f .runtime/compose.ontology.yaml up -d mcp`.
+Apply it with `docker compose -f compose.yaml -f .runtime/compose.ontology.yaml up -d mcp worker`.
 The original service's vault mount, models and credentials remain configured by the first
 Compose file. Definitions stay on the local machine and outside Git.
 

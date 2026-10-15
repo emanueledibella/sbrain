@@ -1,3 +1,4 @@
+import hashlib
 import json
 import math
 import re
@@ -10,6 +11,7 @@ from rdflib import Graph
 
 from .config import Settings
 from .graph import Neo4jGraph
+from .jobs import JobQueue
 from .models import (
     Change,
     Claim,
@@ -26,7 +28,7 @@ from .models import (
 from .ollama import Ollama
 from .semantics import Semantics
 from .state import State, overlaps
-from .store import Vault, atomic_write
+from .store import Vault, atomic_write, private_directory
 from .validation import validate_entity_references, validate_extraction
 from .vocabulary import vocabulary
 
@@ -52,6 +54,7 @@ class MemoryEngine:
         self._state_cache = None
         self._cache_lock = RLock()
         self._view_lock = FileLock(self.vault.meta / "views.lock", timeout=240, mode=0o600)
+        self._queue = None
 
     def close(self):
         if self.graph:
@@ -172,6 +175,20 @@ class MemoryEngine:
         revision: int | None = None,
         extraction: Extraction | dict | None = None,
     ) -> dict:
+        # Foreground calls and the recovery worker share this per-revision lock.
+        # It prevents redundant local inference without holding the ledger writer lock.
+        with self.vault.transaction() as events:
+            source = self._source(self._state(events), source_id, revision)
+        locks = self.vault.meta / "extraction-locks"
+        private_directory(locks)
+        with FileLock(
+            locks / f"{source.source_id}-{source.revision}.lock",
+            timeout=self.settings.model_timeout * 3 + 30,
+            mode=0o600,
+        ):
+            return self._extract_source(source.source_id, source.revision, extraction)
+
+    def _extract_source(self, source_id, revision, extraction):
         with self.vault.transaction() as events:
             state = self._state(events)
             source = self._source(state, source_id, revision)
@@ -981,6 +998,60 @@ class MemoryEngine:
         warnings.extend(self._sync(state))
         return {"updated": len(claims), "warnings": warnings}
 
+    @property
+    def embedding_profile(self):
+        return hashlib.sha256(
+            f"{self.settings.embedding_model}:{self.settings.embedding_dimensions}".encode()
+        ).hexdigest()
+
+    def compatible_embedding(self, claim):
+        return (
+            claim.embedding_model == self.settings.embedding_model
+            and len(claim.embedding) == self.settings.embedding_dimensions
+            and all(math.isfinite(x) for x in claim.embedding)
+            and any(claim.embedding)
+        )
+
+    def repair_embedding(self, claim_id):
+        """Repair one claim without re-extracting or changing any memory version/status."""
+        with self.vault.transaction() as events:
+            state = self._state(events)
+            claim = state.claims[canonical_id(claim_id)]
+            if self.compatible_embedding(claim):
+                return
+        self._verify_evidence(state, claim)
+        vectors, warnings = self._vectors([claim.statement])
+        if warnings:
+            raise RuntimeError("Embedding unavailable")
+        with self.vault.transaction() as events:
+            state = self._state(events)
+            if self.compatible_embedding(state.claims[claim.id]):
+                return
+            self.vault.append(
+                events,
+                operation_id=f"embeddings:{uid()}",
+                kind="embeddings",
+                recorded_at=instant(self.clock()),
+                metadata={
+                    "model": self.settings.embedding_model,
+                    "vectors": {claim.id: vectors[0]},
+                },
+            )
+
+    def job_queue(self):
+        if self.settings.worker_queue_path is None:
+            raise ValueError("Recovery queue is disabled; configure SB_WORKER_QUEUE_PATH")
+        with self._cache_lock:
+            if self._queue is None:
+                self._queue = JobQueue(self.settings.worker_queue_path)
+            return self._queue
+
+    def recovery_jobs(self, status=None, limit=20, offset=0):
+        return self.job_queue().list(self.vault.id, status=status, limit=limit, offset=offset)
+
+    def retry_job(self, job_id):
+        return self.job_queue().retry(self.vault.id, job_id)
+
     def _materialize(self, state: State, force: bool = False) -> list[str]:
         try:
             # Serialize views separately and always use the newest canonical snapshot.
@@ -1090,6 +1161,9 @@ class MemoryEngine:
                     "max_inflight": self.settings.mcp_max_inflight,
                 },
                 "embeddings_missing": sum(not c.embedding for c in state.claims.values()),
+                "embeddings_incompatible": sum(
+                    not self.compatible_embedding(c) for c in state.claims.values()
+                ),
                 "knowledge": {
                     "vocabulary_version": self.vocabulary.data["version"],
                     "vocabulary_sha256": self.vocabulary.digest,
@@ -1100,6 +1174,17 @@ class MemoryEngine:
                     "owl_reasoner": "OWL 2 RL (local owlrl)",
                 },
             }
+        if self.settings.worker_queue_path is None:
+            result["recovery"] = {"enabled": False}
+        else:
+            try:
+                result["recovery"] = self.job_queue().summary(self.vault.id)
+            except Exception as exc:
+                result["recovery"] = {
+                    "enabled": True,
+                    "available": False,
+                    "error": type(exc).__name__,
+                }
         for name, service in (("neo4j", self.graph), ("ollama", self.models)):
             try:
                 result[name] = (

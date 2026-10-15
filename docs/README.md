@@ -17,10 +17,10 @@ and connect an MCP client. Read the following pages to understand what happens a
 | [Memory retrieval](retrieval.md) | The complete `recall` flow, temporal filters, vector similarity, graph expansion, ranking and source verification |
 | [Temporal memory and corrections](temporal-memory-and-corrections.md) | Valid time, knowledge time, corrections, real-world changes, retractions and identity history |
 | [Reasoning and agent decisions](reasoning.md) | Who requests deductions, where OWL executes and how conclusions retain their premises |
-| [Reliability and recovery](reliability-and-recovery.md) | Current retries, incomplete processing, operator commands and the proposed persistent worker |
+| [Reliability and recovery](reliability-and-recovery.md) | SQLite jobs, restart recovery, automatic retries, `needs_review`, configuration and operator commands |
 | [Knowledge vocabulary reference](knowledge.md) | RDF/RDFS, reused vocabularies, SHACL shapes, OWL profile, exports and vocabulary extensions |
 
-## Implemented behavior and proposed work
+## Implemented behavior
 
 The system saves original sources before calling a model or graph database. It preserves
 source revisions and the history of adopted operations. Neo4j and generated Markdown
@@ -37,10 +37,12 @@ reason_memory  → derive supported conclusions from a selected temporal snapsho
 OWL reasoning is implemented, but the agent or another caller must explicitly request it.
 Neither `remember` nor `recall` automatically executes `reason_memory`.
 
-**Deferred recovery is not implemented as an autonomous worker.** A failed extraction can
-remain pending, and missing embeddings require an explicit maintenance operation. The
-[recovery page](reliability-and-recovery.md) separates current behavior from the proposed
-persistent queue and worker. That proposal must not be read as an existing feature.
+**Compose includes an autonomous recovery worker and a persistent SQLite queue.** It
+reconciles the ledger at startup and periodically, retries unfinished extraction, repairs
+missing/incompatible embeddings and updates projections without depending on a chat agent.
+Repeated failures become visible `needs_review` jobs. Outside Compose, recovery is opt-in
+through `SB_WORKER_QUEUE_PATH` and the `worker` command. See the
+[recovery page](reliability-and-recovery.md) for configuration and restart semantics.
 
 ## Diagrams
 

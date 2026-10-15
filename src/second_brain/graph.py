@@ -84,7 +84,8 @@ class Neo4jGraph:
             meta = tx.run(
                 "MERGE (m:MemoryMeta {vault_id:$vault, id:'head'}) "
                 "SET m.lock = coalesce(m.lock, 0) + 1 "
-                "RETURN m.head AS head, m.seq AS seq, m.vocabulary_sha256 AS vocabulary",
+                "RETURN m.head AS head, m.seq AS seq, m.vocabulary_sha256 AS vocabulary, "
+                "m.embedding_profile AS embedding_profile",
                 vault=self.vault_id,
             ).single()
             if meta["seq"] is not None and meta["seq"] > len(state.events):
@@ -92,7 +93,10 @@ class Neo4jGraph:
                     return  # A slow older request cannot roll back a newer projection.
                 # Explicit replay after restoring a backup may rebuild from the current
                 # canonical ledger, even if the old database has a longer history.
-            same_vocabulary = meta.get("vocabulary") == self.vocabulary.digest
+            same_vocabulary = (
+                meta.get("vocabulary") == self.vocabulary.digest
+                and meta.get("embedding_profile") == self.vector_index
+            )
             if (
                 not force
                 and same_vocabulary
@@ -253,15 +257,31 @@ class Neo4jGraph:
             ).consume()
             tx.run(
                 "MATCH (m:MemoryMeta {vault_id:$vault, id:'head'}) "
-                "SET m.head=$head, m.seq=$seq, m.vocabulary_sha256=$vocabulary",
+                "SET m.head=$head, m.seq=$seq, m.vocabulary_sha256=$vocabulary, "
+                "m.embedding_profile=$embedding_profile",
                 vault=self.vault_id,
                 head=state.head,
                 seq=len(state.events),
                 vocabulary=self.vocabulary.digest,
+                embedding_profile=self.vector_index,
             ).consume()
 
         with self.driver.session(database=self.settings.neo4j_database) as session:
             session.execute_write(project)
+
+    def is_current(self, state):
+        rows = self.query(
+            "MATCH (m:MemoryMeta {vault_id:$vault, id:'head'}) "
+            "RETURN m.head AS head, m.seq AS seq, m.vocabulary_sha256 AS vocabulary, "
+            "m.embedding_profile AS embedding_profile",
+            vault=self.vault_id,
+        )
+        return bool(rows) and rows[0] == {
+            "head": state.head,
+            "seq": len(state.events),
+            "vocabulary": self.vocabulary.digest,
+            "embedding_profile": self.vector_index,
+        }
 
     def search(
         self,

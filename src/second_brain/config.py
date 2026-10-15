@@ -30,3 +30,10 @@ class Settings(BaseSettings):
     semantic_max_claims: int = Field(default=250, ge=1, le=2000)
     semantic_max_triples: int = Field(default=100000, ge=1000, le=1000000)
     vocabulary_extension_path: Path | None = None
+    worker_queue_path: Path | None = None
+    worker_poll_seconds: float = Field(default=2, ge=0.1, le=60)
+    worker_reconcile_seconds: float = Field(default=15, ge=1, le=3600)
+    worker_lease_seconds: float = Field(default=60, ge=10, le=3600)
+    worker_max_attempts: int = Field(default=5, ge=1, le=100)
+    worker_retry_base_seconds: float = Field(default=30, ge=0.1, le=3600)
+    worker_retry_max_seconds: float = Field(default=3600, ge=1, le=86400)

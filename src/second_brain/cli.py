@@ -24,6 +24,17 @@ def parser() -> argparse.ArgumentParser:
     )
     sub.add_parser("replay", help="Rebuild Neo4j and Markdown views without an LLM")
     sub.add_parser("reembed", help="Generate embeddings for all existing claims locally")
+    worker = sub.add_parser("worker", help="Run persistent recovery independently of MCP")
+    worker.add_argument("--once", action="store_true", help="Reconcile and process at most one job")
+    sub.add_parser("worker-health", help="Check the persistent worker heartbeat")
+    jobs = sub.add_parser("jobs", help="Inspect persistent recovery jobs")
+    jobs.add_argument(
+        "--status", choices=("pending", "running", "retry_wait", "done", "needs_review")
+    )
+    jobs.add_argument("--limit", type=int, default=20)
+    jobs.add_argument("--offset", type=int, default=0)
+    retry = sub.add_parser("retry-job", help="Requeue a failed recovery job after review")
+    retry.add_argument("job_id")
     vocab = sub.add_parser("vocabulary", help="Inspect the offline RDF/RDFS/OWL vocabulary")
     vocab.add_argument("query", nargs="?", default="")
     vocab.add_argument("--kind", choices=("all", "classes", "properties"), default="all")
@@ -174,6 +185,19 @@ def dispatch(args, engine: MemoryEngine):
         return None
     if command in {"status", "replay", "reembed"}:
         return getattr(engine, command)()
+    if command == "worker":
+        from .worker import run_worker
+
+        return run_worker(engine, once=args.once)
+    if command == "worker-health":
+        summary = engine.job_queue().summary(engine.vault.id)
+        if not summary["worker_alive"]:
+            raise RuntimeError("Recovery worker heartbeat is stale or absent")
+        return {"worker_alive": True}
+    if command == "jobs":
+        return engine.recovery_jobs(args.status, args.limit, args.offset)
+    if command == "retry-job":
+        return engine.retry_job(args.job_id)
     if command == "vocabulary":
         if args.format == "turtle":
             return {"data": engine.vocabulary.ontology().serialize(format="turtle")}

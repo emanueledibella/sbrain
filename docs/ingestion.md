@@ -4,8 +4,8 @@
 
 The normal ingestion entry point is the MCP `remember` tool, implemented by
 [`MemoryEngine.remember()`](../src/second_brain/engine.py). The call saves an original
-source and then attempts extraction synchronously. There is currently no persistent queue
-that automatically completes a failed extraction later.
+source and then attempts extraction synchronously. The independent recovery worker also
+discovers unfinished work from the ledger, persists it in SQLite and retries it later.
 
 ```mermaid
 flowchart TD
@@ -14,6 +14,8 @@ flowchart TD
     C --> D["Qwen: propose structured extraction"]
     D --> E["Vocabulary normalization, Python checks and SHACL"]
     E -->|"Rejected after repair attempt"| P["Original retained; extraction pending"]
+    P --> R["Worker reconciliation and persistent retry job"]
+    R --> D
     E -->|Accepted| F["Generate claim embeddings"]
     F --> G["Adopt entities and claims in the ledger"]
     G --> H["Synchronize Neo4j"]
@@ -90,7 +92,7 @@ participated or that the model interpreted every phrase correctly.
 Schema, evidence, identity, temporal or SHACL validation errors in the local-model
 response trigger one immediate repair attempt with the validation feedback. A second
 failure leaves the whole batch unadopted. Transport failures do not go through this
-JSON-repair loop.
+JSON-repair loop. They are handled by the independent worker's job retry policy.
 
 The engine also accepts an `extraction` object supplied explicitly by an agent or caller.
 This bypasses chat inference but still applies structural, evidence, identity, temporal
@@ -124,6 +126,9 @@ also records model and prompt/schema information where available.
 
 Model inference and embedding generation do not hold the canonical writer lock. Once the
 event is committed, later graph failure cannot undo adoption.
+Foreground and worker extraction share a per-source-revision file lock. If one completes
+while the other is waiting, the second reuses the adopted result without another model
+extraction or duplicate claims.
 
 ## 7. Update projections and report the outcome
 
@@ -142,5 +147,10 @@ Already adopted revisions do not create duplicate claims. An unprocessed revisio
 by a later adopted revision with identical content and relevant metadata returns
 `superseded`; both originals remain readable. Retrying it does not resurrect claims that
 have since been corrected or revised.
+
+The worker repairs missing or incompatible embeddings one claim at a time and reconciles
+projection checkpoints, including work saved before the queue existed. Its retries do not
+replace explicit corrections, weaken validation or automatically rerun an already adopted
+extraction. See [reliability and recovery](reliability-and-recovery.md).
 
 The [retrieval flow](retrieval.md) explains how adopted claims are selected and returned.

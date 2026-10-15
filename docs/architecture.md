@@ -16,6 +16,8 @@ does not train a model, and ordinary retrieval does not automatically execute OW
 | Agent and client | Decide when to save, what to search for and whether to request deductions. Connecting an MCP server does not automatically record the conversation. |
 | MCP server, in the `mcp` container | Exposes tools and source resources, validates tool arguments and enforces HTTP access controls. |
 | `MemoryEngine`, in the same container | Coordinates sources, extraction, validation, identities, temporal state, retrieval and projections. |
+| Recovery worker, in the `worker` container | Discovers and processes unfinished extraction, embedding and projection work independently of the client. |
+| SQLite recovery queue, on the `jobs_data` volume | Persists job state, attempts, scheduled retries, leases and worker heartbeats. |
 | Local vault | Stores immutable Markdown originals, the event ledger and generated Markdown views. |
 | Ollama, in its own container | Runs local models through `/api/chat` and `/api/embed`. |
 | Qwen, configured by default as `qwen2.5:1.5b` | Proposes structured extractions from free text. |
@@ -35,6 +37,8 @@ flowchart TD
     C --> E["Ollama: extraction and embeddings"]
     C --> F["Neo4j: derived graph and search indexes"]
     C --> G["RDFLib, pySHACL and OWL-RL"]
+    W["Independent recovery worker"] --> C
+    W <--> Q["Persistent SQLite jobs"]
     H["Local vocabulary and validation shapes"] --> G
     H --> E
 ```
@@ -42,8 +46,9 @@ flowchart TD
 ## What MemoryEngine actually is
 
 `MemoryEngine` is a Python class written for this project, implemented in
-[`engine.py`](../src/second_brain/engine.py). It is instantiated in the Python process
-running the MCP server. It is neither an AI model nor another Docker service.
+[`engine.py`](../src/second_brain/engine.py). The MCP process and worker process each
+instantiate their own engine and caches, sharing canonical files and locks. It is neither
+an AI model nor another Docker service.
 
 For example, the MCP `remember` wrapper calls `MemoryEngine.remember()`. That method saves
 the source and invokes the extraction flow. Other methods implement retrieval, changes,
@@ -65,13 +70,19 @@ These request threads are not a persistent background recovery worker.
 
 ## Docker services and startup
 
-The normal deployment has three long-running services: `mcp`, `ollama` and `neo4j`.
+The normal deployment has four long-running services: `mcp`, `worker`, `ollama` and `neo4j`.
 The one-shot `models-init` service checks that the configured models are installed and
 downloads missing ones before normal startup completes. It does not run for each memory.
+The one-shot `queue-init` service sets the recovery volume's private permissions and
+ownership to the configured UID/GID before the MCP and worker processes start.
 
 The vault is bind-mounted from the host into `/data/vault`. Neo4j data and logs use Docker
 volumes; Ollama model files use their own volume. Application data therefore lives outside
 the disposable writable layer of the MCP container.
+Both application processes mount the same private `jobs_data` volume at `/data/jobs`.
+The worker uses the same application image and runs `second-brain worker` without exposing
+a network port. It reuses `MemoryEngine`, rather than implementing another adoption path.
+It can keep processing while the MCP process or agent client is stopped.
 
 The Compose network lets the MCP process reach Ollama at `http://ollama:11434` and Neo4j
 over Bolt at `bolt://neo4j:7687`. Published ports bind to the host's loopback interface.
@@ -88,7 +99,8 @@ access to the process and its files.
 MCP supplies tools and instructions; it does not guarantee that a client will expose every
 instruction to its model or that a model will follow a particular sequence of tools.
 See [reasoning decisions](reasoning.md#who-decides-to-request-deductions) and
-[recovery limitations](reliability-and-recovery.md).
+[recovery operation](reliability-and-recovery.md). Recovery itself does not require the
+agent to select a tool: the separate worker owns that responsibility.
 
 ## Authoritative data and derived views
 

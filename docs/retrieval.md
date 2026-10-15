@@ -147,3 +147,9 @@ An original saved without a successful extraction has no adopted claims to rank 
 [reliability and recovery](reliability-and-recovery.md).
 
 Formal deductions require a separate [reasoning request](reasoning.md).
+
+The independent worker discovers pending extraction and repairs embeddings/projections in
+the background. It does not block every `recall` until the backlog is empty: an unfinished
+source still becomes searchable only after successful adoption. Use `memory_status.recovery`
+or `recovery_jobs` to inspect backlog and `needs_review` rather than assuming a successful
+text save means complete indexing.

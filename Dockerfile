@@ -18,7 +18,7 @@ RUN python -m pip install --no-index --find-links=/wheels second-brain \
     && rm -rf /wheels \
     && groupadd --gid 1000 brain \
     && useradd --uid 1000 --gid brain --no-create-home brain \
-    && mkdir -p /data/vault \
+    && mkdir -p /data/vault /data/jobs \
     && chown -R brain:brain /data
 COPY examples ./examples
 USER brain

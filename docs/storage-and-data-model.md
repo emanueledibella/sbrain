@@ -18,6 +18,7 @@ vault/
 │   ├── source-versions/
 │   │   └── <source-id>/<revision>-<hash>.md    # immutable source originals
 │   ├── writer.lock                           # serialization of canonical writes
+│   ├── extraction-locks/                     # per-revision foreground/worker locks
 │   ├── views.lock                            # serialization of generated views
 │   ├── views.json                            # generated-view checkpoint
 │   └── recovery/                             # fragments of interrupted final appends
@@ -147,5 +148,10 @@ Deleting the host vault or removing the data volumes is a separate operation.
 
 The ledger and originals allow Neo4j and generated profiles to be rebuilt through `replay`.
 RDF exports are snapshots of a selected view, not an additional authoritative store.
+SQLite recovery jobs live separately at `/data/jobs/queue.sqlite3` on the `jobs_data`
+volume. They store work identifiers, statuses, retry/lease metadata and safe error codes,
+not source text or embedding vectors. If that derived queue is lost, reconciliation can
+rediscover unfinished work from the vault, but previous attempt counts and review decisions
+are lost. Preserve the volume across ordinary restarts.
 The [temporal memory page](temporal-memory-and-corrections.md) explains how historical
 versions and explicit identity decisions affect those views.

@@ -28,6 +28,27 @@ x-memory-dependencies: &memory-dependencies
   models-init:
     condition: service_completed_successfully
 
+x-recovery-environment: &recovery-environment
+  SB_WORKER_QUEUE_PATH: /data/jobs/queue.sqlite3
+  SB_WORKER_POLL_SECONDS: ${SB_WORKER_POLL_SECONDS:-2}
+  SB_WORKER_RECONCILE_SECONDS: ${SB_WORKER_RECONCILE_SECONDS:-15}
+  SB_WORKER_LEASE_SECONDS: ${SB_WORKER_LEASE_SECONDS:-60}
+  SB_WORKER_MAX_ATTEMPTS: ${SB_WORKER_MAX_ATTEMPTS:-5}
+  SB_WORKER_RETRY_BASE_SECONDS: ${SB_WORKER_RETRY_BASE_SECONDS:-30}
+  SB_WORKER_RETRY_MAX_SECONDS: ${SB_WORKER_RETRY_MAX_SECONDS:-3600}
+
+x-memory-volumes: &memory-volumes
+  - type: bind
+    source: ${SB_VAULT_PATH:-./vault}
+    target: /data/vault
+    bind:
+      create_host_path: false
+  - type: volume
+    source: jobs_data
+    target: /data/jobs
+    volume:
+      nocopy: true
+
 services:
   mcp:
     image: second-brain:local
@@ -38,28 +59,83 @@ services:
     init: true
     user: "${SB_CONTAINER_UID:-1000}:${SB_CONTAINER_GID:-1000}"
     environment:
-      <<: *memory-environment
+      <<: [*memory-environment, *recovery-environment]
       SB_VAULT_PATH: /data/vault
     ports:
       - "127.0.0.1:${SB_MCP_PORT:-8000}:8000"
-    volumes:
-      - type: bind
-        source: ${SB_VAULT_PATH:-./vault}
-        target: /data/vault
-        bind:
-          create_host_path: false
+    volumes: *memory-volumes
     read_only: true
     tmpfs:
       - /tmp:mode=1777,size=64m
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    depends_on: *memory-dependencies
+    depends_on:
+      <<: *memory-dependencies
+      queue-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  queue-init:
+    image: second-brain:local
+    restart: "no"
+    user: "0:0"
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    environment:
+      JOBS_UID: ${SB_CONTAINER_UID:-1000}
+      JOBS_GID: ${SB_CONTAINER_GID:-1000}
+    volumes:
+      - type: volume
+        source: jobs_data
+        target: /data/jobs
+        volume:
+          nocopy: true
+    entrypoint: [python, -c]
+    command:
+      - |
+        import os
+        from pathlib import Path
+        root = Path('/data/jobs')
+        for path in [root, *root.iterdir()]:
+            if path.is_symlink() or not (path.is_file() or path.is_dir()):
+                raise RuntimeError('Unexpected file in recovery volume')
+            os.chown(path, int(os.environ['JOBS_UID']), int(os.environ['JOBS_GID']))
+            path.chmod(0o700 if path.is_dir() else 0o600)
+
+  worker:
+    image: second-brain:local
+    restart: unless-stopped
+    init: true
+    user: "${SB_CONTAINER_UID:-1000}:${SB_CONTAINER_GID:-1000}"
+    command: [worker]
+    environment:
+      <<: [*memory-environment, *recovery-environment]
+      SB_VAULT_PATH: /data/vault
+    volumes: *memory-volumes
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=64m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s
+    depends_on:
+      <<: *memory-dependencies
+      queue-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, second-brain, worker-health]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   neo4j:
     image: neo4j:5.26-community@sha256:c7d25c0eeebfe125718d58b72ed5d663c85d0479047733845eb2237c67ce8069
@@ -129,3 +205,4 @@ volumes:
   neo4j_data:
   neo4j_logs:
   ollama_models:
+  jobs_data:

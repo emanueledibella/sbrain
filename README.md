@@ -27,12 +27,14 @@ Compose starts:
 | Service | Purpose | Host address |
 | --- | --- | --- |
 | `mcp` | Memory engine and persistent MCP Streamable HTTP server | `http://127.0.0.1:8000/mcp` |
+| `worker` | Automatic extraction, embedding and projection recovery | No exposed port |
+| `queue-init` | Sets private recovery-volume ownership, then exits | No exposed port |
 | `neo4j` | Graph, full-text search, and vector search | Browser `http://127.0.0.1:7474`, Bolt `127.0.0.1:7687` |
 | `ollama` | Local extraction and embeddings | `http://127.0.0.1:11434` |
 | `models-init` | Downloads missing models, then exits | No exposed port |
 
-`mcp` starts once Neo4j and Ollama are healthy and `models-init` has completed successfully.
-It is normal for `models-init` to show **Exited (0)**. Downloading models on the first run
+`mcp` and `worker` start once Neo4j and Ollama are healthy and initialization has completed.
+It is normal for `models-init` and `queue-init` to show **Exited (0)**. Downloading models on the first run
 may take several minutes; models already stored in the volume are reused.
 
 ```bash
@@ -76,7 +78,8 @@ exceed these limits and remain pending: split them before ingestion.
 
 The vault is a bind mount of the `vault/` directory, so Markdown files and the ledger remain
 accessible from the host. Neo4j and Ollama use the `second-brain_neo4j_data`,
-`second-brain_neo4j_logs`, and `second-brain_ollama_models` volumes. The Compose project name
+`second-brain_neo4j_logs`, and `second-brain_ollama_models` volumes. Persistent recovery jobs
+use `second-brain_jobs_data`, shared by MCP and the worker. The Compose project name
 is `second-brain`, allowing existing data and model volumes to be reused.
 
 ```bash
@@ -85,12 +88,14 @@ docker compose down
 docker compose up -d --build
 
 # After changing the engine code.
-docker compose up -d --build mcp
+docker compose up -d --build mcp worker
 ```
 
 For a normal shutdown, use `docker compose down` without `-v`; adding `-v` removes the Neo4j
-volumes and downloaded models. Before backing up the vault, stop processes that can write to
-it, including stdio clients, and save the entire directory, including `.memory/`.
+volumes, recovery history and downloaded models. Before backing up the vault, stop processes
+that can write to it, including the worker, MCP and stdio clients, and save the entire
+directory, including `.memory/`. Preserve the jobs volume separately to retain retry/review
+history; incomplete obligations can otherwise be rediscovered from the vault.
 Resolve any port conflicts before starting the services.
 
 ## First use
@@ -125,6 +130,14 @@ Retrying such a revision returns `superseded` and the indexed revision's existin
 it never recreates claims that were subsequently corrected or revised. A changed text or
 observation time remains pending until processed independently.
 
+Compose enables a persistent SQLite recovery queue on the `jobs_data` volume. The independent
+worker discovers incomplete extraction, missing/incompatible embeddings and stale Neo4j or
+Markdown views at startup and every 15 seconds. It retries failures with increasing delays,
+resumes expired work after a restart and moves repeated failures to `needs_review` after five
+attempts by default. `memory_status.recovery` reports counts and worker liveness;
+`recovery_jobs` lists work and write-protected `retry_job` requeues a reviewed failure.
+See [worker operation and recovery](docs/reliability-and-recovery.md).
+
 The full demo stores fictional memories in the `demo` scope, changes a trip's destination,
 and corrects Marco's participation:
 
@@ -154,8 +167,7 @@ docker compose exec -T mcp rm /tmp/note.md
 ## How memory is organized
 
 The [project documentation](docs/README.md) explains the architecture, storage, ingestion,
-retrieval, temporal changes, reasoning and recovery, with Mermaid flowcharts. It also
-distinguishes implemented behavior from the proposed automatic recovery worker.
+retrieval, temporal changes, reasoning and automatic recovery, with Mermaid flowcharts.
 
 The engine also includes an extensible RDF/RDFS vocabulary with **56 domain classes and 99
 properties**, SHACL validation and local OWL 2 RL reasoning. It reuses references from
@@ -439,7 +451,8 @@ A first prompt to check retrieval without adding memories:
 
 Exposed tools: `remember`, `extract_source`, `recall`, `read_source`, `correct`, `revise`, `retract`,
 `explain`, `history`, `find_entities`, `add_alias`, `merge_entities`, `memory_status`,
-`knowledge_schema`, `validate_knowledge`, `export_rdf`, and `reason_memory`. The `memory://source/SOURCE_ID/REVISION` resource
+`knowledge_schema`, `validate_knowledge`, `export_rdf`, `reason_memory`, `recovery_jobs`, and
+`retry_job`. The `memory://source/SOURCE_ID/REVISION` resource
 and `memory_policy` prompt are also available.
 Maintenance operations (`replay`, `reembed`) use the CLI; no tool exposes arbitrary Cypher.
 

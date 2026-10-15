@@ -33,7 +33,10 @@ packages = ["src/second_brain"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-markers = ["integration: requires running local Neo4j or Ollama"]
+markers = [
+  "integration: requires running local Neo4j or Ollama",
+  "worker_e2e: complete MCP/worker fault, restart and needs_review recovery scenarios",
+]
 
 [tool.ruff]
 target-version = "py311"

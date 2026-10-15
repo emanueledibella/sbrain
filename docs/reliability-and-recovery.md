@@ -205,5 +205,9 @@ Successful extraction is not guaranteed for arbitrary text. Persistent ambiguity
 visible as `needs_review`, preserving the original and evidence requirements. Recovery
 does not capture conversations automatically or run/save OWL deductions.
 
+The complete fault/restart/review scenario is part of the automated suite. See
+[automated worker recovery tests](testing.md) for repeatable Docker and local commands,
+assertions, diagnostics and isolation guarantees.
+
 SQLite references: [transactions](https://sqlite.org/lang_transaction.html) and
 [synchronous durability settings](https://sqlite.org/pragma.html#pragma_synchronous).

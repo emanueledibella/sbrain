@@ -19,6 +19,7 @@ and connect an MCP client. Read the following pages to understand what happens a
 | [Reasoning and agent decisions](reasoning.md) | Who requests deductions, where OWL executes and how conclusions retain their premises |
 | [Reliability and recovery](reliability-and-recovery.md) | SQLite jobs, restart recovery, automatic retries, `needs_review`, configuration and operator commands |
 | [Knowledge vocabulary reference](knowledge.md) | RDF/RDFS, reused vocabularies, SHACL shapes, OWL profile, exports and vocabulary extensions |
+| [Automated worker recovery tests](testing.md) | Repeatable outage, retry, restart, review and deduplication checks, with deterministic and real-service variants |
 
 ## Implemented behavior
 

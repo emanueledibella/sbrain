@@ -8,12 +8,14 @@ from neo4j import GraphDatabase
 from .config import Settings
 from .models import instant
 from .state import State
+from .vocabulary import vocabulary
 
 
 class Neo4jGraph:
     def __init__(self, settings: Settings, vault_id: str):
         self.settings = settings
         self.vault_id = vault_id
+        self.vocabulary = vocabulary(settings.vocabulary_extension_path)
         self.driver = GraphDatabase.driver(
             settings.neo4j_uri,
             auth=(settings.neo4j_user, settings.neo4j_password.get_secret_value()),
@@ -81,7 +83,8 @@ class Neo4jGraph:
             # A write to the metadata node serializes projections, including other processes.
             meta = tx.run(
                 "MERGE (m:MemoryMeta {vault_id:$vault, id:'head'}) "
-                "SET m.lock = coalesce(m.lock, 0) + 1 RETURN m.head AS head, m.seq AS seq",
+                "SET m.lock = coalesce(m.lock, 0) + 1 "
+                "RETURN m.head AS head, m.seq AS seq, m.vocabulary_sha256 AS vocabulary",
                 vault=self.vault_id,
             ).single()
             if meta["seq"] is not None and meta["seq"] > len(state.events):
@@ -89,11 +92,18 @@ class Neo4jGraph:
                     return  # A slow older request cannot roll back a newer projection.
                 # Explicit replay after restoring a backup may rebuild from the current
                 # canonical ledger, even if the old database has a longer history.
-            if not force and meta["head"] == state.head and meta["seq"] is not None:
+            same_vocabulary = meta.get("vocabulary") == self.vocabulary.digest
+            if (
+                not force
+                and same_vocabulary
+                and meta["head"] == state.head
+                and meta["seq"] is not None
+            ):
                 return  # No serialization of entities/vectors on an unchanged head.
             cursor = meta["seq"] or 0
             incremental = (
                 not force
+                and same_vocabulary
                 and cursor > 0
                 and cursor <= len(state.events)
                 and state.events[cursor - 1].hash == meta["head"]
@@ -120,7 +130,13 @@ class Neo4jGraph:
                 change_ids.update(c.id for c in event.changes)
                 identity_ids.update(c.id for c in event.identity_changes)
             entities = [
-                state.entities[i].model_dump(mode="json") | {"md_path": f"entities/{i}.md"}
+                state.entities[i].model_dump(mode="json")
+                | {
+                    "md_path": f"entities/{i}.md",
+                    "kind_iri": str(self.vocabulary.class_iri(state.entities[i].kind))
+                    if isinstance(state.entities[i].kind, str)
+                    else None,
+                }
                 for i in entity_ids
             ]
             sources = [state.sources[i].model_dump(mode="json") | {"id": i} for i in source_ids]
@@ -146,6 +162,7 @@ class Neo4jGraph:
                     recorded_to=version.recorded_to.isoformat() if version.recorded_to else None,
                     subject_name=state.entities[claim.subject_id].name,
                     object_name=state.entities[claim.object_id].name if claim.object_id else None,
+                    predicate_iri=str(self.vocabulary.property_iri(claim.predicate)),
                 )
                 assertions.append(
                     {"props": props, "evidence": [e.model_dump() for e in claim.evidence]}
@@ -235,10 +252,12 @@ class Neo4jGraph:
                 dimensions=self.settings.embedding_dimensions,
             ).consume()
             tx.run(
-                "MATCH (m:MemoryMeta {vault_id:$vault, id:'head'}) SET m.head=$head, m.seq=$seq",
+                "MATCH (m:MemoryMeta {vault_id:$vault, id:'head'}) "
+                "SET m.head=$head, m.seq=$seq, m.vocabulary_sha256=$vocabulary",
                 vault=self.vault_id,
                 head=state.head,
                 seq=len(state.events),
+                vocabulary=self.vocabulary.digest,
             ).consume()
 
         with self.driver.session(database=self.settings.neo4j_database) as session:

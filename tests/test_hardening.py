@@ -291,6 +291,8 @@ def test_extraction_provenance_is_recorded(engine, memory):
     assert result["provenance"] == {
         "origin": "agent/manual",
         "extractor_version": 2,
+        "vocabulary_sha256": engine.vocabulary.digest,
+        "validation_shapes_sha256": engine.semantics.shapes_digest,
         "source_sha256": hashlib.sha256(b"The trip goes to Palermo.").hexdigest(),
     }
 

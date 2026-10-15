@@ -1,0 +1,2607 @@
+{
+  "version": "1.0.0",
+  "namespace": "urn:sbrain:vocab:",
+  "sources": [
+    {
+      "name": "Schema.org",
+      "url": "https://schema.org/docs/schemas.html",
+      "license": "CC-BY-SA-3.0",
+      "license_url": "https://schema.org/docs/terms.html",
+      "use": "References to class IRIs and related property IRIs; descriptions below are original."
+    },
+    {
+      "name": "PROV-O",
+      "url": "https://www.w3.org/TR/prov-o/",
+      "license": "W3C document/software terms",
+      "license_url": "https://www.w3.org/copyright/",
+      "use": "Claim/source provenance and links to source revisions."
+    },
+    {
+      "name": "SKOS",
+      "url": "https://www.w3.org/TR/skos-reference/",
+      "license": "W3C document/software terms",
+      "license_url": "https://www.w3.org/copyright/",
+      "use": "Concept labels and conceptual relationships."
+    },
+    {
+      "name": "OWL-Time",
+      "url": "https://www.w3.org/TR/owl-time/",
+      "license": "W3C document/software terms",
+      "license_url": "https://www.w3.org/copyright/",
+      "use": "Explicit temporal interval and instant descriptions."
+    },
+    {
+      "name": "ORG",
+      "url": "https://www.w3.org/TR/vocab-org/",
+      "license": "W3C document/software terms",
+      "license_url": "https://www.w3.org/copyright/",
+      "use": "Organization units, roles, membership mappings."
+    }
+  ],
+  "classes": [
+    {
+      "key": "entity",
+      "term": "Entity",
+      "label": {
+        "en": "Entity",
+        "it": "Entità"
+      },
+      "parents": [],
+      "external_class": "https://schema.org/Thing",
+      "aliases": []
+    },
+    {
+      "key": "agent",
+      "term": "Agent",
+      "label": {
+        "en": "Agent",
+        "it": "Agente"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "http://www.w3.org/ns/prov#Agent",
+      "aliases": []
+    },
+    {
+      "key": "person",
+      "term": "Person",
+      "label": {
+        "en": "Person",
+        "it": "Persona"
+      },
+      "parents": [
+        "agent"
+      ],
+      "external_class": "https://schema.org/Person",
+      "aliases": []
+    },
+    {
+      "key": "organization",
+      "term": "Organization",
+      "label": {
+        "en": "Organization",
+        "it": "Organizzazione"
+      },
+      "parents": [
+        "agent"
+      ],
+      "external_class": "https://schema.org/Organization",
+      "aliases": []
+    },
+    {
+      "key": "company",
+      "term": "Company",
+      "label": {
+        "en": "Company",
+        "it": "Azienda"
+      },
+      "parents": [
+        "organization"
+      ],
+      "external_class": "https://schema.org/Organization",
+      "aliases": []
+    },
+    {
+      "key": "team",
+      "term": "Team",
+      "label": {
+        "en": "Team",
+        "it": "Gruppo"
+      },
+      "parents": [
+        "organization"
+      ],
+      "external_class": "https://schema.org/Organization",
+      "aliases": []
+    },
+    {
+      "key": "organization_unit",
+      "term": "OrganizationUnit",
+      "label": {
+        "en": "OrganizationUnit",
+        "it": "Unità organizzativa"
+      },
+      "parents": [
+        "organization"
+      ],
+      "external_class": "http://www.w3.org/ns/org#OrganizationalUnit",
+      "aliases": []
+    },
+    {
+      "key": "software_agent",
+      "term": "SoftwareAgent",
+      "label": {
+        "en": "SoftwareAgent",
+        "it": "Agente software"
+      },
+      "parents": [
+        "agent"
+      ],
+      "external_class": "http://www.w3.org/ns/prov#SoftwareAgent",
+      "aliases": []
+    },
+    {
+      "key": "place",
+      "term": "Place",
+      "label": {
+        "en": "Place",
+        "it": "Luogo"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Place",
+      "aliases": []
+    },
+    {
+      "key": "city",
+      "term": "City",
+      "label": {
+        "en": "City",
+        "it": "Città"
+      },
+      "parents": [
+        "place"
+      ],
+      "external_class": "https://schema.org/City",
+      "aliases": []
+    },
+    {
+      "key": "country",
+      "term": "Country",
+      "label": {
+        "en": "Country",
+        "it": "Paese"
+      },
+      "parents": [
+        "place"
+      ],
+      "external_class": "https://schema.org/Country",
+      "aliases": []
+    },
+    {
+      "key": "address",
+      "term": "PostalAddress",
+      "label": {
+        "en": "PostalAddress",
+        "it": "Indirizzo"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/PostalAddress",
+      "aliases": []
+    },
+    {
+      "key": "event",
+      "term": "Event",
+      "label": {
+        "en": "Event",
+        "it": "Evento"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Event",
+      "aliases": []
+    },
+    {
+      "key": "meeting",
+      "term": "Meeting",
+      "label": {
+        "en": "Meeting",
+        "it": "Riunione"
+      },
+      "parents": [
+        "event"
+      ],
+      "external_class": "https://schema.org/Event",
+      "aliases": []
+    },
+    {
+      "key": "trip",
+      "term": "Trip",
+      "label": {
+        "en": "Trip",
+        "it": "Viaggio"
+      },
+      "parents": [
+        "event"
+      ],
+      "external_class": "https://schema.org/Trip",
+      "aliases": []
+    },
+    {
+      "key": "appointment",
+      "term": "Appointment",
+      "label": {
+        "en": "Appointment",
+        "it": "Appuntamento"
+      },
+      "parents": [
+        "event"
+      ],
+      "external_class": "https://schema.org/Event",
+      "aliases": []
+    },
+    {
+      "key": "activity",
+      "term": "Activity",
+      "label": {
+        "en": "Activity",
+        "it": "Attività"
+      },
+      "parents": [
+        "event"
+      ],
+      "external_class": "https://schema.org/Action",
+      "aliases": []
+    },
+    {
+      "key": "project",
+      "term": "Project",
+      "label": {
+        "en": "Project",
+        "it": "Progetto"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Project",
+      "aliases": []
+    },
+    {
+      "key": "task",
+      "term": "Task",
+      "label": {
+        "en": "Task",
+        "it": "Attività da completare"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Action",
+      "aliases": []
+    },
+    {
+      "key": "goal",
+      "term": "Goal",
+      "label": {
+        "en": "Goal",
+        "it": "Obiettivo"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Intangible",
+      "aliases": []
+    },
+    {
+      "key": "decision",
+      "term": "Decision",
+      "label": {
+        "en": "Decision",
+        "it": "Decisione"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Intangible",
+      "aliases": []
+    },
+    {
+      "key": "commitment",
+      "term": "Commitment",
+      "label": {
+        "en": "Commitment",
+        "it": "Impegno"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Intangible",
+      "aliases": []
+    },
+    {
+      "key": "reminder",
+      "term": "Reminder",
+      "label": {
+        "en": "Reminder",
+        "it": "Promemoria"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Intangible",
+      "aliases": []
+    },
+    {
+      "key": "habit",
+      "term": "Habit",
+      "label": {
+        "en": "Habit",
+        "it": "Abitudine"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Intangible",
+      "aliases": []
+    },
+    {
+      "key": "preference",
+      "term": "Preference",
+      "label": {
+        "en": "Preference",
+        "it": "Preferenza"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Intangible",
+      "aliases": []
+    },
+    {
+      "key": "topic",
+      "term": "Topic",
+      "label": {
+        "en": "Topic",
+        "it": "Argomento"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "http://www.w3.org/2004/02/skos/core#Concept",
+      "aliases": []
+    },
+    {
+      "key": "skill",
+      "term": "Skill",
+      "label": {
+        "en": "Skill",
+        "it": "Competenza"
+      },
+      "parents": [
+        "topic"
+      ],
+      "external_class": "https://schema.org/DefinedTerm",
+      "aliases": []
+    },
+    {
+      "key": "document",
+      "term": "Document",
+      "label": {
+        "en": "Document",
+        "it": "Documento"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/CreativeWork",
+      "aliases": []
+    },
+    {
+      "key": "note",
+      "term": "Note",
+      "label": {
+        "en": "Note",
+        "it": "Nota"
+      },
+      "parents": [
+        "document"
+      ],
+      "external_class": "https://schema.org/DigitalDocument",
+      "aliases": []
+    },
+    {
+      "key": "conversation",
+      "term": "Conversation",
+      "label": {
+        "en": "Conversation",
+        "it": "Conversazione"
+      },
+      "parents": [
+        "document"
+      ],
+      "external_class": "https://schema.org/Conversation",
+      "aliases": []
+    },
+    {
+      "key": "message",
+      "term": "Message",
+      "label": {
+        "en": "Message",
+        "it": "Messaggio"
+      },
+      "parents": [
+        "document"
+      ],
+      "external_class": "https://schema.org/Message",
+      "aliases": []
+    },
+    {
+      "key": "email_message",
+      "term": "EmailMessage",
+      "label": {
+        "en": "EmailMessage",
+        "it": "Messaggio email"
+      },
+      "parents": [
+        "message"
+      ],
+      "external_class": "https://schema.org/EmailMessage",
+      "aliases": []
+    },
+    {
+      "key": "website",
+      "term": "Website",
+      "label": {
+        "en": "Website",
+        "it": "Sito web"
+      },
+      "parents": [
+        "document"
+      ],
+      "external_class": "https://schema.org/WebSite",
+      "aliases": []
+    },
+    {
+      "key": "webpage",
+      "term": "WebPage",
+      "label": {
+        "en": "WebPage",
+        "it": "Pagina web"
+      },
+      "parents": [
+        "document"
+      ],
+      "external_class": "https://schema.org/WebPage",
+      "aliases": []
+    },
+    {
+      "key": "contact",
+      "term": "Contact",
+      "label": {
+        "en": "Contact",
+        "it": "Contatto"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/ContactPoint",
+      "aliases": []
+    },
+    {
+      "key": "software",
+      "term": "Software",
+      "label": {
+        "en": "Software",
+        "it": "Software"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/SoftwareApplication",
+      "aliases": []
+    },
+    {
+      "key": "repository",
+      "term": "Repository",
+      "label": {
+        "en": "Repository",
+        "it": "Repository"
+      },
+      "parents": [
+        "document"
+      ],
+      "external_class": "https://schema.org/SoftwareSourceCode",
+      "aliases": []
+    },
+    {
+      "key": "service",
+      "term": "Service",
+      "label": {
+        "en": "Service",
+        "it": "Servizio"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Service",
+      "aliases": []
+    },
+    {
+      "key": "product",
+      "term": "Product",
+      "label": {
+        "en": "Product",
+        "it": "Prodotto"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Product",
+      "aliases": []
+    },
+    {
+      "key": "device",
+      "term": "Device",
+      "label": {
+        "en": "Device",
+        "it": "Dispositivo"
+      },
+      "parents": [
+        "product"
+      ],
+      "external_class": "https://schema.org/Product",
+      "aliases": []
+    },
+    {
+      "key": "account",
+      "term": "Account",
+      "label": {
+        "en": "Account",
+        "it": "Account"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Thing",
+      "aliases": []
+    },
+    {
+      "key": "course",
+      "term": "Course",
+      "label": {
+        "en": "Course",
+        "it": "Corso"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Course",
+      "aliases": []
+    },
+    {
+      "key": "qualification",
+      "term": "Qualification",
+      "label": {
+        "en": "Qualification",
+        "it": "Qualifica"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/EducationalOccupationalCredential",
+      "aliases": []
+    },
+    {
+      "key": "institution",
+      "term": "Institution",
+      "label": {
+        "en": "Institution",
+        "it": "Istituto"
+      },
+      "parents": [
+        "organization"
+      ],
+      "external_class": "https://schema.org/EducationalOrganization",
+      "aliases": []
+    },
+    {
+      "key": "book",
+      "term": "Book",
+      "label": {
+        "en": "Book",
+        "it": "Libro"
+      },
+      "parents": [
+        "document"
+      ],
+      "external_class": "https://schema.org/Book",
+      "aliases": []
+    },
+    {
+      "key": "media",
+      "term": "Media",
+      "label": {
+        "en": "Media",
+        "it": "Contenuto multimediale"
+      },
+      "parents": [
+        "document"
+      ],
+      "external_class": "https://schema.org/MediaObject",
+      "aliases": []
+    },
+    {
+      "key": "expense",
+      "term": "Expense",
+      "label": {
+        "en": "Expense",
+        "it": "Spesa"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/Thing",
+      "aliases": []
+    },
+    {
+      "key": "transaction",
+      "term": "Transaction",
+      "label": {
+        "en": "Transaction",
+        "it": "Transazione"
+      },
+      "parents": [
+        "event"
+      ],
+      "external_class": "https://schema.org/Action",
+      "aliases": []
+    },
+    {
+      "key": "financial_account",
+      "term": "FinancialAccount",
+      "label": {
+        "en": "FinancialAccount",
+        "it": "Conto"
+      },
+      "parents": [
+        "account"
+      ],
+      "external_class": "https://schema.org/Thing",
+      "aliases": []
+    },
+    {
+      "key": "health_record",
+      "term": "HealthRecord",
+      "label": {
+        "en": "HealthRecord",
+        "it": "Documento sanitario"
+      },
+      "parents": [
+        "document"
+      ],
+      "external_class": "https://schema.org/CreativeWork",
+      "aliases": []
+    },
+    {
+      "key": "health_condition",
+      "term": "HealthCondition",
+      "label": {
+        "en": "HealthCondition",
+        "it": "Condizione di salute"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "https://schema.org/MedicalCondition",
+      "aliases": []
+    },
+    {
+      "key": "medication",
+      "term": "Medication",
+      "label": {
+        "en": "Medication",
+        "it": "Farmaco"
+      },
+      "parents": [
+        "product"
+      ],
+      "external_class": "https://schema.org/Drug",
+      "aliases": []
+    },
+    {
+      "key": "recipe",
+      "term": "Recipe",
+      "label": {
+        "en": "Recipe",
+        "it": "Ricetta"
+      },
+      "parents": [
+        "document"
+      ],
+      "external_class": "https://schema.org/Recipe",
+      "aliases": []
+    },
+    {
+      "key": "role",
+      "term": "Role",
+      "label": {
+        "en": "Role",
+        "it": "Ruolo"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "http://www.w3.org/ns/org#Role",
+      "aliases": []
+    },
+    {
+      "key": "interval",
+      "term": "Interval",
+      "label": {
+        "en": "Interval",
+        "it": "Intervallo"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "http://www.w3.org/2006/time#Interval",
+      "aliases": []
+    },
+    {
+      "key": "instant",
+      "term": "Instant",
+      "label": {
+        "en": "Instant",
+        "it": "Istante"
+      },
+      "parents": [
+        "entity"
+      ],
+      "external_class": "http://www.w3.org/2006/time#Instant",
+      "aliases": []
+    }
+  ],
+  "properties": [
+    {
+      "key": "participation",
+      "term": "participatesIn",
+      "label": {
+        "en": "participation",
+        "it": "Partecipa a"
+      },
+      "description": "Records participation for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "agent",
+      "range": "event",
+      "inverse": "has_participant",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "participates_in",
+        "attends",
+        "partecipa",
+        "partecipa_a"
+      ],
+      "related_term": "https://schema.org/attendee"
+    },
+    {
+      "key": "has_participant",
+      "term": "hasParticipant",
+      "label": {
+        "en": "has participant",
+        "it": "Ha partecipante"
+      },
+      "description": "Records has participant for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "event",
+      "range": "agent",
+      "inverse": "participation",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": "https://schema.org/attendee"
+    },
+    {
+      "key": "destination",
+      "term": "destination",
+      "label": {
+        "en": "destination",
+        "it": "Destinazione"
+      },
+      "description": "Records destination for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "event",
+      "range": "place",
+      "inverse": "destination_of",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": true,
+      "aliases": [
+        "destinazione"
+      ],
+      "related_term": "https://schema.org/itinerary"
+    },
+    {
+      "key": "destination_of",
+      "term": "destinationOf",
+      "label": {
+        "en": "destination of",
+        "it": "Destinazione di"
+      },
+      "description": "Records destination of for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "place",
+      "range": "event",
+      "inverse": "destination",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "works_for",
+      "term": "worksFor",
+      "label": {
+        "en": "works for",
+        "it": "Lavora per"
+      },
+      "description": "Records works for for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "person",
+      "range": "organization",
+      "inverse": "employs",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "lavora_per"
+      ],
+      "related_term": "https://schema.org/worksFor"
+    },
+    {
+      "key": "employs",
+      "term": "employs",
+      "label": {
+        "en": "employs",
+        "it": "Impiega"
+      },
+      "description": "Records employs for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "organization",
+      "range": "person",
+      "inverse": "works_for",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "works_on",
+      "term": "worksOn",
+      "label": {
+        "en": "works on",
+        "it": "Lavora su"
+      },
+      "description": "Records works on for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "agent",
+      "range": "project",
+      "inverse": "has_contributor",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "lavora_su",
+        "contributes_to"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "has_contributor",
+      "term": "hasContributor",
+      "label": {
+        "en": "has contributor",
+        "it": "Ha collaboratore"
+      },
+      "description": "Records has contributor for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "project",
+      "range": "agent",
+      "inverse": "works_on",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": "https://schema.org/contributor"
+    },
+    {
+      "key": "member_of",
+      "term": "memberOf",
+      "label": {
+        "en": "member of",
+        "it": "Membro di"
+      },
+      "description": "Records member of for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "agent",
+      "range": "organization",
+      "inverse": "has_member",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "membro_di"
+      ],
+      "related_term": "http://www.w3.org/ns/org#memberOf"
+    },
+    {
+      "key": "has_member",
+      "term": "hasMember",
+      "label": {
+        "en": "has member",
+        "it": "Ha membro"
+      },
+      "description": "Records has member for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "organization",
+      "range": "agent",
+      "inverse": "member_of",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": "http://www.w3.org/ns/org#hasMember"
+    },
+    {
+      "key": "part_of",
+      "term": "partOf",
+      "label": {
+        "en": "part of",
+        "it": "Parte di"
+      },
+      "description": "Records part of for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "entity",
+      "inverse": "has_part",
+      "symmetric": false,
+      "transitive": true,
+      "single_in_context": false,
+      "aliases": [
+        "parte_di"
+      ],
+      "related_term": "https://schema.org/isPartOf"
+    },
+    {
+      "key": "has_part",
+      "term": "hasPart",
+      "label": {
+        "en": "has part",
+        "it": "Ha parte"
+      },
+      "description": "Records has part for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "entity",
+      "inverse": "part_of",
+      "symmetric": false,
+      "transitive": true,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": "https://schema.org/hasPart"
+    },
+    {
+      "key": "located_in",
+      "term": "locatedIn",
+      "label": {
+        "en": "located in",
+        "it": "Si trova in"
+      },
+      "description": "Records located in for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "place",
+      "inverse": "contains_entity",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "si_trova_a"
+      ],
+      "related_term": "https://schema.org/location"
+    },
+    {
+      "key": "contains_entity",
+      "term": "containsEntity",
+      "label": {
+        "en": "contains entity",
+        "it": "Contiene entità"
+      },
+      "description": "Records contains entity for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "place",
+      "range": "entity",
+      "inverse": "located_in",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "knows",
+      "term": "knows",
+      "label": {
+        "en": "knows",
+        "it": "Conosce"
+      },
+      "description": "Records knows for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "person",
+      "range": "person",
+      "inverse": null,
+      "symmetric": true,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "conosce"
+      ],
+      "related_term": "https://schema.org/knows"
+    },
+    {
+      "key": "distinct_from",
+      "term": "distinctFrom",
+      "label": {
+        "en": "distinct from",
+        "it": "Distinto da"
+      },
+      "description": "Records distinct from for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "entity",
+      "inverse": null,
+      "symmetric": true,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "diverso_da"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "related_to",
+      "term": "relatedTo",
+      "label": {
+        "en": "related to",
+        "it": "Concetto correlato"
+      },
+      "description": "Records related to for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "topic",
+      "range": "topic",
+      "inverse": null,
+      "symmetric": true,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "correlato_a"
+      ],
+      "related_term": "http://www.w3.org/2004/02/skos/core#related"
+    },
+    {
+      "key": "broader",
+      "term": "broader",
+      "label": {
+        "en": "broader",
+        "it": "Concetto più generale"
+      },
+      "description": "Records broader for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "topic",
+      "range": "topic",
+      "inverse": "narrower",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "concetto_piu_generale"
+      ],
+      "related_term": "http://www.w3.org/2004/02/skos/core#broader"
+    },
+    {
+      "key": "narrower",
+      "term": "narrower",
+      "label": {
+        "en": "narrower",
+        "it": "Concetto più specifico"
+      },
+      "description": "Records narrower for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "topic",
+      "range": "topic",
+      "inverse": "broader",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": "http://www.w3.org/2004/02/skos/core#narrower"
+    },
+    {
+      "key": "depends_on",
+      "term": "dependsOn",
+      "label": {
+        "en": "depends on",
+        "it": "Dipende da"
+      },
+      "description": "Records depends on for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "entity",
+      "inverse": "dependency_of",
+      "symmetric": false,
+      "transitive": true,
+      "single_in_context": false,
+      "aliases": [
+        "dipende_da"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "dependency_of",
+      "term": "dependencyOf",
+      "label": {
+        "en": "dependency of",
+        "it": "Dipendenza di"
+      },
+      "description": "Records dependency of for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "entity",
+      "inverse": "depends_on",
+      "symmetric": false,
+      "transitive": true,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "assigned_to",
+      "term": "assignedTo",
+      "label": {
+        "en": "assigned to",
+        "it": "Assegnato a"
+      },
+      "description": "Records assigned to for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "task",
+      "range": "agent",
+      "inverse": "has_assignment",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "assegnato_a"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "has_assignment",
+      "term": "hasAssignment",
+      "label": {
+        "en": "has assignment",
+        "it": "Ha incarico"
+      },
+      "description": "Records has assignment for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "agent",
+      "range": "task",
+      "inverse": "assigned_to",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "responsible_for",
+      "term": "responsibleFor",
+      "label": {
+        "en": "responsible for",
+        "it": "Responsabile di"
+      },
+      "description": "Records responsible for for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "agent",
+      "range": "entity",
+      "inverse": "has_responsible",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "responsabile_di"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "has_responsible",
+      "term": "hasResponsible",
+      "label": {
+        "en": "has responsible",
+        "it": "Ha responsabile"
+      },
+      "description": "Records has responsible for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "agent",
+      "inverse": "responsible_for",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "owned_by",
+      "term": "ownedBy",
+      "label": {
+        "en": "owned by",
+        "it": "Di proprietà di"
+      },
+      "description": "Records owned by for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "agent",
+      "inverse": "owns",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "proprietario"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "owns",
+      "term": "owns",
+      "label": {
+        "en": "owns",
+        "it": "Possiede"
+      },
+      "description": "Records owns for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "agent",
+      "range": "entity",
+      "inverse": "owned_by",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": "https://schema.org/owns"
+    },
+    {
+      "key": "created_by",
+      "term": "createdBy",
+      "label": {
+        "en": "created by",
+        "it": "Creato da"
+      },
+      "description": "Records created by for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "agent",
+      "inverse": "created",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "creato_da"
+      ],
+      "related_term": "https://schema.org/creator"
+    },
+    {
+      "key": "created",
+      "term": "created",
+      "label": {
+        "en": "created",
+        "it": "Ha creato"
+      },
+      "description": "Records created for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "agent",
+      "range": "entity",
+      "inverse": "created_by",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "contact_for",
+      "term": "contactFor",
+      "label": {
+        "en": "contact for",
+        "it": "Contatto di"
+      },
+      "description": "Records contact for for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "contact",
+      "range": "agent",
+      "inverse": "has_contact",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": "https://schema.org/contactPoint"
+    },
+    {
+      "key": "has_contact",
+      "term": "hasContact",
+      "label": {
+        "en": "has contact",
+        "it": "Ha contatto"
+      },
+      "description": "Records has contact for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "agent",
+      "range": "contact",
+      "inverse": "contact_for",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": "https://schema.org/contactPoint"
+    },
+    {
+      "key": "studies_at",
+      "term": "studiesAt",
+      "label": {
+        "en": "studies at",
+        "it": "Studia presso"
+      },
+      "description": "Records studies at for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "person",
+      "range": "institution",
+      "inverse": "has_student",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "studia_presso"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "has_student",
+      "term": "hasStudent",
+      "label": {
+        "en": "has student",
+        "it": "Ha studente"
+      },
+      "description": "Records has student for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "institution",
+      "range": "person",
+      "inverse": "studies_at",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "enrolled_in",
+      "term": "enrolledIn",
+      "label": {
+        "en": "enrolled in",
+        "it": "Iscritto a"
+      },
+      "description": "Records enrolled in for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "person",
+      "range": "course",
+      "inverse": "has_enrollee",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "iscritto_a"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "has_enrollee",
+      "term": "hasEnrollee",
+      "label": {
+        "en": "has enrollee",
+        "it": "Ha iscritto"
+      },
+      "description": "Records has enrollee for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "course",
+      "range": "person",
+      "inverse": "enrolled_in",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "mentions",
+      "term": "mentions",
+      "label": {
+        "en": "mentions",
+        "it": "Menziona"
+      },
+      "description": "Records mentions for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "document",
+      "range": "entity",
+      "inverse": "mentioned_in",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "menziona"
+      ],
+      "related_term": "https://schema.org/mentions"
+    },
+    {
+      "key": "mentioned_in",
+      "term": "mentionedIn",
+      "label": {
+        "en": "mentioned in",
+        "it": "Menzionato in"
+      },
+      "description": "Records mentioned in for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "document",
+      "inverse": "mentions",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "about",
+      "term": "about",
+      "label": {
+        "en": "about",
+        "it": "Riguarda"
+      },
+      "description": "Records about for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "document",
+      "range": "entity",
+      "inverse": "subject_of",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "riguarda"
+      ],
+      "related_term": "https://schema.org/about"
+    },
+    {
+      "key": "subject_of",
+      "term": "subjectOf",
+      "label": {
+        "en": "subject of",
+        "it": "Soggetto di"
+      },
+      "description": "Records subject of for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "document",
+      "inverse": "about",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": "https://schema.org/subjectOf"
+    },
+    {
+      "key": "references",
+      "term": "references",
+      "label": {
+        "en": "references",
+        "it": "Riferisce a"
+      },
+      "description": "Records references for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "document",
+      "range": "document",
+      "inverse": "referenced_by",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": "https://schema.org/citation"
+    },
+    {
+      "key": "referenced_by",
+      "term": "referencedBy",
+      "label": {
+        "en": "referenced by",
+        "it": "Riferito da"
+      },
+      "description": "Records referenced by for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "document",
+      "range": "document",
+      "inverse": "references",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "supersedes",
+      "term": "supersedes",
+      "label": {
+        "en": "supersedes",
+        "it": "Sostituisce"
+      },
+      "description": "Records supersedes for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "entity",
+      "inverse": "superseded_by",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "sostituisce"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "superseded_by",
+      "term": "supersededBy",
+      "label": {
+        "en": "superseded by",
+        "it": "Sostituito da"
+      },
+      "description": "Records superseded by for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "entity",
+      "inverse": "supersedes",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "supports",
+      "term": "supports",
+      "label": {
+        "en": "supports",
+        "it": "Sostiene"
+      },
+      "description": "Records supports for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "document",
+      "range": "entity",
+      "inverse": "supported_by",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "supported_by",
+      "term": "supportedBy",
+      "label": {
+        "en": "supported by",
+        "it": "Sostenuto da"
+      },
+      "description": "Records supported by for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "document",
+      "inverse": "supports",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": "http://www.w3.org/ns/prov#wasDerivedFrom"
+    },
+    {
+      "key": "prefers",
+      "term": "prefers",
+      "label": {
+        "en": "prefers",
+        "it": "Preferisce"
+      },
+      "description": "Records prefers for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "agent",
+      "range": "entity",
+      "inverse": "preferred_by",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "preferisce"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "preferred_by",
+      "term": "preferredBy",
+      "label": {
+        "en": "preferred by",
+        "it": "Preferito da"
+      },
+      "description": "Records preferred by for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "agent",
+      "inverse": "prefers",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "uses",
+      "term": "uses",
+      "label": {
+        "en": "uses",
+        "it": "Utilizza"
+      },
+      "description": "Records uses for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "agent",
+      "range": "entity",
+      "inverse": "used_by",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "usa",
+        "utilizza"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "used_by",
+      "term": "usedBy",
+      "label": {
+        "en": "used by",
+        "it": "Utilizzato da"
+      },
+      "description": "Records used by for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "agent",
+      "inverse": "uses",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "requires",
+      "term": "requires",
+      "label": {
+        "en": "requires",
+        "it": "Richiede"
+      },
+      "description": "Records requires for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "entity",
+      "inverse": "required_by",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "richiede"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "required_by",
+      "term": "requiredBy",
+      "label": {
+        "en": "required by",
+        "it": "Richiesto da"
+      },
+      "description": "Records required by for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "entity",
+      "inverse": "requires",
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [],
+      "related_term": null
+    },
+    {
+      "key": "linked_to",
+      "term": "linkedTo",
+      "label": {
+        "en": "linked to",
+        "it": "Collegato a"
+      },
+      "description": "Records linked to for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": "entity",
+      "inverse": null,
+      "symmetric": true,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "collegato_a"
+      ],
+      "related_term": "http://www.w3.org/2000/01/rdf-schema#seeAlso"
+    },
+    {
+      "key": "scheduled_for",
+      "term": "scheduledFor",
+      "label": {
+        "en": "scheduled for",
+        "it": "Programmato per"
+      },
+      "description": "Records scheduled for for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "previsto_per"
+      ],
+      "related_term": "https://schema.org/startDate"
+    },
+    {
+      "key": "deadline",
+      "term": "deadline",
+      "label": {
+        "en": "deadline",
+        "it": "Scadenza"
+      },
+      "description": "Records deadline for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": true,
+      "aliases": [
+        "scadenza",
+        "due_date"
+      ],
+      "related_term": "https://schema.org/dueDate"
+    },
+    {
+      "key": "starts_at",
+      "term": "startsAt",
+      "label": {
+        "en": "starts at",
+        "it": "Inizia il"
+      },
+      "description": "Records starts at for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "inizia_il",
+        "start_date"
+      ],
+      "related_term": "https://schema.org/startDate"
+    },
+    {
+      "key": "ends_at",
+      "term": "endsAt",
+      "label": {
+        "en": "ends at",
+        "it": "Termina il"
+      },
+      "description": "Records ends at for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "termina_il",
+        "end_date"
+      ],
+      "related_term": "https://schema.org/endDate"
+    },
+    {
+      "key": "status",
+      "term": "status",
+      "label": {
+        "en": "status",
+        "it": "Stato"
+      },
+      "description": "Records status for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": true,
+      "aliases": [
+        "stato"
+      ],
+      "related_term": "https://schema.org/status"
+    },
+    {
+      "key": "priority",
+      "term": "priority",
+      "label": {
+        "en": "priority",
+        "it": "Priorità"
+      },
+      "description": "Records priority for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": true,
+      "aliases": [
+        "priorita"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "progress",
+      "term": "progress",
+      "label": {
+        "en": "progress",
+        "it": "Avanzamento"
+      },
+      "description": "Records progress for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": true,
+      "aliases": [
+        "avanzamento"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "decision",
+      "term": "decision",
+      "label": {
+        "en": "decision",
+        "it": "Decisione"
+      },
+      "description": "Records decision for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "decisione"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "reason",
+      "term": "reason",
+      "label": {
+        "en": "reason",
+        "it": "Motivo"
+      },
+      "description": "Records reason for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "motivo"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "outcome",
+      "term": "outcome",
+      "label": {
+        "en": "outcome",
+        "it": "Esito"
+      },
+      "description": "Records outcome for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "esito"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "preference",
+      "term": "preference",
+      "label": {
+        "en": "preference",
+        "it": "Preferenza"
+      },
+      "description": "Records preference for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "preferenza"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "availability",
+      "term": "availability",
+      "label": {
+        "en": "availability",
+        "it": "Disponibilità"
+      },
+      "description": "Records availability for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "agent",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "disponibilita"
+      ],
+      "related_term": "https://schema.org/availability"
+    },
+    {
+      "key": "studies",
+      "term": "studies",
+      "label": {
+        "en": "studies",
+        "it": "Ambito di studio"
+      },
+      "description": "Records studies for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "person",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "studia"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "occupation",
+      "term": "occupation",
+      "label": {
+        "en": "occupation",
+        "it": "Professione"
+      },
+      "description": "Records occupation for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "person",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "professione"
+      ],
+      "related_term": "https://schema.org/hasOccupation"
+    },
+    {
+      "key": "job_title",
+      "term": "jobTitle",
+      "label": {
+        "en": "job title",
+        "it": "Titolo lavorativo"
+      },
+      "description": "Records job title for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "person",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "titolo_lavorativo"
+      ],
+      "related_term": "https://schema.org/jobTitle"
+    },
+    {
+      "key": "email",
+      "term": "email",
+      "label": {
+        "en": "email",
+        "it": "Email"
+      },
+      "description": "Records email for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "posta_elettronica"
+      ],
+      "related_term": "https://schema.org/email"
+    },
+    {
+      "key": "phone",
+      "term": "phone",
+      "label": {
+        "en": "phone",
+        "it": "Telefono"
+      },
+      "description": "Records phone for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "telefono",
+        "telephone"
+      ],
+      "related_term": "https://schema.org/telephone"
+    },
+    {
+      "key": "url",
+      "term": "url",
+      "label": {
+        "en": "url",
+        "it": "URL"
+      },
+      "description": "Records url for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "indirizzo_web"
+      ],
+      "related_term": "https://schema.org/url"
+    },
+    {
+      "key": "address",
+      "term": "address",
+      "label": {
+        "en": "address",
+        "it": "Indirizzo"
+      },
+      "description": "Records address for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "indirizzo"
+      ],
+      "related_term": "https://schema.org/address"
+    },
+    {
+      "key": "name",
+      "term": "name",
+      "label": {
+        "en": "name",
+        "it": "Nome"
+      },
+      "description": "Records name for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "nome"
+      ],
+      "related_term": "https://schema.org/name"
+    },
+    {
+      "key": "alias",
+      "term": "alias",
+      "label": {
+        "en": "alias",
+        "it": "Nome alternativo"
+      },
+      "description": "Records alias for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "nome_alternativo"
+      ],
+      "related_term": "https://schema.org/alternateName"
+    },
+    {
+      "key": "description",
+      "term": "description",
+      "label": {
+        "en": "description",
+        "it": "Descrizione"
+      },
+      "description": "Records description for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "descrizione"
+      ],
+      "related_term": "https://schema.org/description"
+    },
+    {
+      "key": "birth_date",
+      "term": "birthDate",
+      "label": {
+        "en": "birth date",
+        "it": "Data di nascita"
+      },
+      "description": "Records birth date for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "person",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": true,
+      "aliases": [
+        "data_nascita"
+      ],
+      "related_term": "https://schema.org/birthDate"
+    },
+    {
+      "key": "amount",
+      "term": "amount",
+      "label": {
+        "en": "amount",
+        "it": "Importo"
+      },
+      "description": "Records amount for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "importo"
+      ],
+      "related_term": "https://schema.org/amount"
+    },
+    {
+      "key": "currency",
+      "term": "currency",
+      "label": {
+        "en": "currency",
+        "it": "Valuta"
+      },
+      "description": "Records currency for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "valuta"
+      ],
+      "related_term": "https://schema.org/currency"
+    },
+    {
+      "key": "price",
+      "term": "price",
+      "label": {
+        "en": "price",
+        "it": "Prezzo"
+      },
+      "description": "Records price for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "prezzo"
+      ],
+      "related_term": "https://schema.org/price"
+    },
+    {
+      "key": "budget",
+      "term": "budget",
+      "label": {
+        "en": "budget",
+        "it": "Budget"
+      },
+      "description": "Records budget for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "preventivo"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "frequency",
+      "term": "frequency",
+      "label": {
+        "en": "frequency",
+        "it": "Frequenza"
+      },
+      "description": "Records frequency for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "frequenza"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "duration",
+      "term": "duration",
+      "label": {
+        "en": "duration",
+        "it": "Durata"
+      },
+      "description": "Records duration for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "durata"
+      ],
+      "related_term": "https://schema.org/duration"
+    },
+    {
+      "key": "quantity",
+      "term": "quantity",
+      "label": {
+        "en": "quantity",
+        "it": "Quantità"
+      },
+      "description": "Records quantity for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "quantita"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "unit",
+      "term": "unit",
+      "label": {
+        "en": "unit",
+        "it": "Unità"
+      },
+      "description": "Records unit for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "unita"
+      ],
+      "related_term": "https://schema.org/unitText"
+    },
+    {
+      "key": "measurement",
+      "term": "measurement",
+      "label": {
+        "en": "measurement",
+        "it": "Misurazione"
+      },
+      "description": "Records measurement for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "misurazione"
+      ],
+      "related_term": "https://schema.org/value"
+    },
+    {
+      "key": "health_note",
+      "term": "healthNote",
+      "label": {
+        "en": "health note",
+        "it": "Nota di salute"
+      },
+      "description": "Records health note for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "nota_salute"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "reminder",
+      "term": "reminder",
+      "label": {
+        "en": "reminder",
+        "it": "Promemoria"
+      },
+      "description": "Records reminder for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "promemoria"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "commitment",
+      "term": "commitment",
+      "label": {
+        "en": "commitment",
+        "it": "Impegno"
+      },
+      "description": "Records commitment for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "impegno"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "goal",
+      "term": "goal",
+      "label": {
+        "en": "goal",
+        "it": "Obiettivo"
+      },
+      "description": "Records goal for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "obiettivo"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "constraint",
+      "term": "constraint",
+      "label": {
+        "en": "constraint",
+        "it": "Vincolo"
+      },
+      "description": "Records constraint for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "vincolo"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "permission",
+      "term": "permission",
+      "label": {
+        "en": "permission",
+        "it": "Permesso"
+      },
+      "description": "Records permission for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "permesso"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "account_identity_rule",
+      "term": "accountIdentityRule",
+      "label": {
+        "en": "account identity rule",
+        "it": "Regola di identità account"
+      },
+      "description": "Records account identity rule for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "person",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "regola_identita"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "memory_preferences",
+      "term": "memoryPreferences",
+      "label": {
+        "en": "memory preferences",
+        "it": "Preferenze di memoria"
+      },
+      "description": "Records memory preferences for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "person",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "preferenze_memoria"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "contact_preference",
+      "term": "contactPreference",
+      "label": {
+        "en": "contact preference",
+        "it": "Preferenza di contatto"
+      },
+      "description": "Records contact preference for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "agent",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "preferenza_contatto"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "accessibility_need",
+      "term": "accessibilityNeed",
+      "label": {
+        "en": "accessibility need",
+        "it": "Esigenza di accessibilità"
+      },
+      "description": "Records accessibility need for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "agent",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "esigenza_accessibilita"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "language",
+      "term": "language",
+      "label": {
+        "en": "language",
+        "it": "Lingua"
+      },
+      "description": "Records language for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "lingua"
+      ],
+      "related_term": "https://schema.org/inLanguage"
+    },
+    {
+      "key": "timezone",
+      "term": "timezone",
+      "label": {
+        "en": "timezone",
+        "it": "Fuso orario"
+      },
+      "description": "Records timezone for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "fuso_orario"
+      ],
+      "related_term": null
+    },
+    {
+      "key": "version",
+      "term": "version",
+      "label": {
+        "en": "version",
+        "it": "Versione"
+      },
+      "description": "Records version for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "versione"
+      ],
+      "related_term": "https://schema.org/version"
+    },
+    {
+      "key": "license",
+      "term": "license",
+      "label": {
+        "en": "license",
+        "it": "Licenza"
+      },
+      "description": "Records license for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "licenza"
+      ],
+      "related_term": "https://schema.org/license"
+    },
+    {
+      "key": "identifier",
+      "term": "identifier",
+      "label": {
+        "en": "identifier",
+        "it": "Identificativo"
+      },
+      "description": "Records identifier for the subject, qualified by the memory scope, context, evidence and time.",
+      "domain": "entity",
+      "range": null,
+      "inverse": null,
+      "symmetric": false,
+      "transitive": false,
+      "single_in_context": false,
+      "aliases": [
+        "identificativo"
+      ],
+      "related_term": "https://schema.org/identifier"
+    }
+  ]
+}

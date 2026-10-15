@@ -1,0 +1,46 @@
+@prefix sb: <urn:sbrain:vocab:> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+sb:EntityShape a sh:NodeShape ; sh:targetClass sb:Entity ;
+    sh:property [ sh:path sb:name ; sh:minCount 1 ; sh:datatype xsd:string ; sh:minLength 1 ] ;
+    sh:property [ sh:path sb:scope ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ; sh:minLength 1 ] .
+
+sb:ClaimShape a sh:NodeShape ; sh:targetClass sb:ClaimVersion ;
+    sh:sparql [
+        sh:message "Sources and referenced entities must share the claim scope." ;
+        sh:select """
+            PREFIX sb: <urn:sbrain:vocab:>
+            SELECT $this ?value WHERE {
+                $this sb:scope ?scope .
+                $this (sb:subject|sb:object|sb:source)/sb:scope ?value .
+                FILTER (?value != ?scope)
+            }
+        """
+    ] ;
+    sh:property [ sh:path sb:subject ; sh:minCount 1 ; sh:maxCount 1 ; sh:class sb:Entity ; sh:nodeKind sh:IRI ] ;
+    sh:property [ sh:path sb:predicate ; sh:minCount 1 ; sh:maxCount 1 ; sh:nodeKind sh:IRI ] ;
+    sh:property [ sh:path sb:object ; sh:maxCount 1 ; sh:class sb:Entity ; sh:nodeKind sh:IRI ] ;
+    sh:property [ sh:path sb:value ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ; sh:minLength 1 ] ;
+    sh:property [ sh:path sb:scope ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ; sh:minLength 1 ] ;
+    sh:property [ sh:path sb:context ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ; sh:minLength 1 ] ;
+    sh:property [ sh:path sb:source ; sh:minCount 1 ; sh:class sb:SourceRevision ] ;
+    sh:property [ sh:path sb:evidence ; sh:minCount 1 ; sh:class sb:Evidence ] ;
+    sh:property [ sh:path sb:epistemic ; sh:minCount 1 ; sh:maxCount 1 ; sh:in ( "explicit" "proposed" "inferred" ) ] ;
+    sh:property [ sh:path sb:polarity ; sh:minCount 1 ; sh:maxCount 1 ; sh:in ( "positive" "negative" ) ] ;
+    sh:property [ sh:path sb:validFrom ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:dateTime ; sh:lessThan sb:validTo ] ;
+    sh:property [ sh:path sb:validTo ; sh:maxCount 1 ; sh:datatype xsd:dateTime ] ;
+    sh:property [ sh:path sb:recordedFrom ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:dateTime ; sh:lessThan sb:recordedTo ] ;
+    sh:property [ sh:path sb:recordedTo ; sh:maxCount 1 ; sh:datatype xsd:dateTime ] .
+
+sb:EvidenceShape a sh:NodeShape ; sh:targetClass sb:Evidence ;
+    sh:property [ sh:path sb:source ; sh:minCount 1 ; sh:maxCount 1 ; sh:class sb:SourceRevision ] ;
+    sh:property [ sh:path sb:quote ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ; sh:minLength 1 ] ;
+    sh:property [ sh:path sb:start ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 0 ; sh:lessThan sb:end ] ;
+    sh:property [ sh:path sb:end ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minExclusive 0 ] .
+
+sb:SourceShape a sh:NodeShape ; sh:targetClass sb:SourceRevision ;
+    sh:property [ sh:path sb:sha256 ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ; sh:pattern "^[a-f0-9]{64}$" ] ;
+    sh:property [ sh:path sb:revision ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ] ;
+    sh:property [ sh:path sb:observedAt ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:dateTime ] ;
+    sh:property [ sh:path sb:recordedAt ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:dateTime ] .

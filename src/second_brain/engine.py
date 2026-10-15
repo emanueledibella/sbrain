@@ -6,6 +6,7 @@ from datetime import datetime
 from threading import RLock
 
 from filelock import FileLock
+from rdflib import Graph
 
 from .config import Settings
 from .graph import Neo4jGraph
@@ -23,9 +24,11 @@ from .models import (
     uid,
 )
 from .ollama import Ollama
+from .semantics import Semantics
 from .state import State, overlaps
 from .store import Vault, atomic_write
 from .validation import validate_entity_references, validate_extraction
+from .vocabulary import vocabulary
 
 _profile_ids: ContextVar[set | None] = ContextVar("profile_ids", default=None)
 _source_cache: ContextVar[dict | None] = ContextVar("verified_sources", default=None)
@@ -42,6 +45,10 @@ class MemoryEngine:
         self.graph = Neo4jGraph(self.settings, self.vault.id) if graph is ... else graph
         self.models = Ollama(self.settings) if models is ... else models
         self.clock = clock
+        self.vocabulary = vocabulary(self.settings.vocabulary_extension_path)
+        self.semantics = Semantics(
+            self.vocabulary, self.settings.semantic_max_claims, self.settings.semantic_max_triples
+        )
         self._state_cache = None
         self._cache_lock = RLock()
         self._view_lock = FileLock(self.vault.meta / "views.lock", timeout=240, mode=0o600)
@@ -184,17 +191,21 @@ class MemoryEngine:
                     provenance = {
                         "origin": "local_model",
                         "model": self.settings.chat_model,
-                        "extractor_version": 3,
+                        "extractor_version": 4,
                     }
                     if hasattr(self.models, "provenance"):
                         provenance.update(self.models.provenance())
                 else:
                     draft = Extraction.model_validate(extraction)
                     provenance = {"origin": "agent/manual", "extractor_version": 2}
+                draft = self.vocabulary.normalize(draft)
+                provenance["vocabulary_sha256"] = self.vocabulary.digest
+                provenance["validation_shapes_sha256"] = self.semantics.shapes_digest
                 validate_extraction(
                     draft, text, observed_at=source.observed_at, semantic_checks=extraction is None
                 )
                 validate_entity_references(draft, known_entities, source.scope)
+                self.semantics.validate_draft(draft, source, known_entities)
                 vectors, embed_warnings = self._vectors([c.statement for c in draft.claims])
                 warnings.extend(embed_warnings)
                 with self.vault.transaction() as events:
@@ -848,6 +859,7 @@ class MemoryEngine:
             )
         return {
             **claim.model_dump(mode="json", exclude={"embedding", "evidence"}),
+            "predicate_iri": str(self.vocabulary.property_iri(claim.predicate)),
             "subject": state.entities[claim.subject_id].model_dump(),
             "object": state.entities[claim.object_id].model_dump() if claim.object_id else None,
             "evidence": evidence,
@@ -1078,6 +1090,15 @@ class MemoryEngine:
                     "max_inflight": self.settings.mcp_max_inflight,
                 },
                 "embeddings_missing": sum(not c.embedding for c in state.claims.values()),
+                "knowledge": {
+                    "vocabulary_version": self.vocabulary.data["version"],
+                    "vocabulary_sha256": self.vocabulary.digest,
+                    "classes": len(self.vocabulary.classes),
+                    "properties": len(self.vocabulary.properties),
+                    "shacl_validation": True,
+                    "validation_shapes_sha256": self.semantics.shapes_digest,
+                    "owl_reasoner": "OWL 2 RL (local owlrl)",
+                },
             }
         for name, service in (("neo4j", self.graph), ("ollama", self.models)):
             try:
@@ -1086,4 +1107,122 @@ class MemoryEngine:
                 )
             except Exception as exc:
                 result[name] = {"available": False, "error": warning(name, exc)}
+        return result
+
+    def knowledge_schema(self, query="", kind="all", limit=20, offset=0):
+        return self.vocabulary.describe(query, kind, limit, offset)
+
+    def _semantic_snapshot(self, scope, valid_at=None, known_at=None, include_uncertain=True):
+        if scope is not None and (not scope.strip() or len(scope) > 200):
+            raise ValueError("Invalid semantic scope")
+        with self.vault.transaction() as events:
+            state = self._state(events)
+        at = instant(self.clock())
+        valid, known = instant(valid_at, at), instant(known_at, at)
+        projection = self.semantics.project(
+            state, self.vault.id, valid, known, scope, include_uncertain
+        )
+        cache = _source_cache.set({})
+        try:
+            for claim in projection["claims"]:
+                self._verify_evidence(state, claim)
+            projection["verified_source_keys"] = set(_source_cache.get())
+        finally:
+            _source_cache.reset(cache)
+        return state, projection
+
+    def validate_knowledge(self, scope=None, valid_at=None, known_at=None):
+        _, projection = self._semantic_snapshot(scope, valid_at, known_at)
+        report = self.semantics.check(projection["graph"])
+        report.update(
+            scope=scope,
+            valid_at=projection["valid_at"],
+            known_at=projection["known_at"],
+            claims_checked=len(projection["claims"]),
+            vocabulary_sha256=self.vocabulary.digest,
+        )
+        return report
+
+    def export_rdf(self, scope=None, valid_at=None, known_at=None, format="trig"):
+        if format not in {"trig", "turtle", "json-ld", "nquads"}:
+            raise ValueError("Supported RDF formats: trig, turtle, json-ld, nquads")
+        _, projection = self._semantic_snapshot(scope, valid_at, known_at)
+        dataset = projection["dataset"]
+        if format == "turtle":
+            graph = Graph()
+            for s, p, o, _ in dataset.quads((None, None, None, None)):
+                graph.add((s, p, o))
+            data = graph.serialize(format="turtle")
+        else:
+            data = dataset.serialize(format=format)
+        if len(data.encode()) > self.settings.mcp_max_body_bytes:
+            raise ValueError("RDF export exceeds response size budget; select a smaller scope")
+        return {
+            "format": format,
+            "data": data,
+            "scope": scope,
+            "valid_at": projection["valid_at"],
+            "known_at": projection["known_at"],
+            "claims": len(projection["claims"]),
+            "vocabulary_sha256": self.vocabulary.digest,
+            "warnings": projection["warnings"],
+            "instruction": "Quoted claims are source statements, not verified truths. "
+            "Metadata includes negation and uncertainty; no unrestricted union inference.",
+        }
+
+    def reason_memory(self, scope, valid_at=None, known_at=None, context=None, limit=30):
+        if not scope or not 1 <= limit <= 100 or (context is not None and len(context) > 200):
+            raise ValueError("Reasoning requires a scope, valid context and limit 1–100")
+        state, projection = self._semantic_snapshot(scope, valid_at, known_at)
+        if context is not None:
+            projection["claims"] = [c for c in projection["claims"] if c.context == context]
+        report = self.semantics.check(projection["graph"])
+        if report["issue_count"] > len(report["issues"]):
+            raise ValueError("Too many SHACL violations for safe reasoning; select a smaller scope")
+        invalid = {issue["focus"] for issue in report["issues"]}
+        projection["claims"] = [
+            c for c in projection["claims"] if str(projection["claim_nodes"][c.id]) not in invalid
+        ]
+        result = self.semantics.reason(projection)
+        if not report["conforms"]:
+            result["warnings"].append("SHACL-invalid claims were excluded; use validate_knowledge")
+        result["truncated"] = len(result["deductions"]) > limit
+        result["deductions"] = result["deductions"][:limit]
+        bounded, used_chars = [], 0
+        for item in result["deductions"]:
+            evidence = []
+            for identifier in item["premise_claim_ids"]:
+                claim = next(c for c in projection["claims"] if c.id == identifier)
+                evidence.extend(self._describe(state, claim)["evidence"])
+            for identifier in item["premise_entity_ids"]:
+                key = projection["entity_origins"].get(identifier)
+                if key:
+                    source = state.sources[key]
+                    if key not in projection["verified_source_keys"]:
+                        self.vault.read(source)
+                        projection["verified_source_keys"].add(key)
+                    evidence.append(
+                        {
+                            "source_id": source.source_id,
+                            "revision": source.revision,
+                            "source_sha256": source.sha256,
+                            "basis": "entity classification",
+                        }
+                    )
+            item["sources"] = evidence
+            size = len(json.dumps(item, ensure_ascii=False))
+            if used_chars + size > min(200000, self.settings.mcp_max_body_bytes // 2):
+                result["truncated"] = True
+                continue
+            bounded.append(item)
+            used_chars += size
+        result["deductions"] = bounded
+        result.update(
+            scope=scope,
+            context=context,
+            valid_at=projection["valid_at"],
+            known_at=projection["known_at"],
+            instruction="Deductions follow declared source claims and vocabulary axioms; "
+            "they are not independently verified facts or saved memories.",
+        )
         return result

@@ -26,6 +26,10 @@ Writes to the memory ledger survive graph/model outages; read the returned statu
 Retry a pending saved revision with extract_source, rather than creating another source revision.
 For one precise identity, use find_entities then recall with entity_id. A similar search hit
 does not establish identity; broad semantic queries can return other related memories.
+Use knowledge_schema to inspect canonical vocabulary, aliases, signatures and OWL axioms.
+Use validate_knowledge to audit SHACL constraints and reason_memory for formal, source-backed
+OWL deductions at a specific scope and time. Reading axioms is not executing a reasoner.
+Deductions are returned separately and never silently saved or treated as verified facts.
 """
 
 
@@ -233,6 +237,67 @@ def create_server(engine: MemoryEngine, *, host: str = "127.0.0.1", port: int = 
     async def memory_status() -> dict[str, Any]:
         """Check canonical storage, pending extraction and local services."""
         return await to_thread.run_sync(engine.status)
+
+    @mcp.tool(annotations=read)
+    async def knowledge_schema(
+        query: str = "",
+        kind: Literal["all", "classes", "properties"] = "all",
+        limit: int = 20,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Inspect the offline extensible vocabulary, bilingual labels, aliases and OWL rules.
+
+        Follow next_offset for more terms. Inverse, symmetric and transitive fields are
+        formal axioms; call reason_memory to execute them on a temporal memory snapshot.
+        """
+        return await to_thread.run_sync(
+            partial(engine.knowledge_schema, query, kind, limit, offset)
+        )
+
+    @mcp.tool(annotations=read)
+    async def validate_knowledge(
+        scope: str | None = None,
+        valid_at: str | None = None,
+        known_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Audit selected memories against SHACL shapes without changing stored data."""
+        return await to_thread.run_sync(
+            partial(engine.validate_knowledge, scope, valid_at, known_at)
+        )
+
+    @mcp.tool(annotations=read)
+    async def export_rdf(
+        scope: str | None = None,
+        valid_at: str | None = None,
+        known_at: str | None = None,
+        format: Literal["trig", "turtle", "json-ld", "nquads"] = "trig",
+    ) -> dict[str, Any]:
+        """Export a bounded RDF snapshot with sources, claims, both time axes and vocabulary.
+
+        Negations and proposals remain qualified claim records, not asserted positive facts.
+        No remote ontologies are fetched. This does not expose arbitrary SPARQL execution.
+        """
+        return await to_thread.run_sync(
+            partial(engine.export_rdf, scope, valid_at, known_at, format)
+        )
+
+    @mcp.tool(annotations=read)
+    async def reason_memory(
+        scope: str,
+        valid_at: str | None = None,
+        known_at: str | None = None,
+        context: str | None = None,
+        limit: int = 30,
+    ) -> dict[str, Any]:
+        """Run local OWL 2 RL reasoning; return inferred relations/types with premises and sources.
+
+        Only eligible explicit positive claims are used. Contexts are reasoned independently.
+        Nothing is saved; corrections and historical times are respected. No automatic
+        owl:sameAs identity merges or claims of real-world verification are made.
+        """
+        return await to_thread.run_sync(
+            partial(engine.reason_memory, scope, valid_at, known_at, context, limit)
+        )
 
     @mcp.tool(annotations=read)
     async def find_entities(

@@ -24,6 +24,24 @@ def parser() -> argparse.ArgumentParser:
     )
     sub.add_parser("replay", help="Rebuild Neo4j and Markdown views without an LLM")
     sub.add_parser("reembed", help="Generate embeddings for all existing claims locally")
+    vocab = sub.add_parser("vocabulary", help="Inspect the offline RDF/RDFS/OWL vocabulary")
+    vocab.add_argument("query", nargs="?", default="")
+    vocab.add_argument("--kind", choices=("all", "classes", "properties"), default="all")
+    vocab.add_argument("--limit", type=int, default=20)
+    vocab.add_argument("--offset", type=int, default=0)
+    vocab.add_argument("--format", choices=("json", "turtle"), default="json")
+    for name in ("validate-knowledge", "export-rdf", "reason"):
+        semantic = sub.add_parser(name)
+        semantic.add_argument("--scope", required=name == "reason")
+        semantic.add_argument("--valid-at")
+        semantic.add_argument("--known-at")
+        if name == "export-rdf":
+            semantic.add_argument(
+                "--format", choices=("trig", "turtle", "json-ld", "nquads"), default="trig"
+            )
+        if name == "reason":
+            semantic.add_argument("--context")
+            semantic.add_argument("--limit", type=int, default=30)
     sub.add_parser(
         "demo", help="Save clearly labeled fictional examples and exercise both time axes"
     )
@@ -114,9 +132,18 @@ def main():
     try:
         result = dispatch(args, engine)
         if result is not None:
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            if args.command == "export-rdf" or (
+                args.command == "vocabulary" and args.format == "turtle"
+            ):
+                print(result["data"], end="" if result["data"].endswith("\n") else "\n")
+                if result.get("warnings"):
+                    print(json.dumps({"warnings": result["warnings"]}), file=sys.stderr)
+            else:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
         if isinstance(result, dict) and (
-            result.get("status") == "stored_pending_extraction" or result.get("warnings")
+            result.get("status") == "stored_pending_extraction"
+            or result.get("warnings")
+            or result.get("conforms") is False
         ):
             sys.exit(
                 2
@@ -147,6 +174,22 @@ def dispatch(args, engine: MemoryEngine):
         return None
     if command in {"status", "replay", "reembed"}:
         return getattr(engine, command)()
+    if command == "vocabulary":
+        if args.format == "turtle":
+            return {"data": engine.vocabulary.ontology().serialize(format="turtle")}
+        return engine.knowledge_schema(args.query, args.kind, args.limit, args.offset)
+    if command in {"validate-knowledge", "export-rdf", "reason"}:
+        function = {
+            "validate-knowledge": engine.validate_knowledge,
+            "export-rdf": engine.export_rdf,
+            "reason": engine.reason_memory,
+        }[command]
+        extra = (
+            {"format": args.format}
+            if command == "export-rdf"
+            else ({"context": args.context, "limit": args.limit} if command == "reason" else {})
+        )
+        return function(args.scope, args.valid_at, args.known_at, **extra)
     if command == "remember":
         return engine.remember(
             args.file.read_text(),

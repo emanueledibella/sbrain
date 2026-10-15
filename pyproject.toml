@@ -16,6 +16,9 @@ dependencies = [
   "filelock>=3.16,<4",
   "anyio>=4.5,<5",
   "starlette>=0.27,<2",
+  "rdflib>=7.6,<8",
+  "pyshacl>=0.40,<0.41",
+  "owlrl>=7.6,<8",
 ]
 
 [project.optional-dependencies]

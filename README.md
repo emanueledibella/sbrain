@@ -153,6 +153,14 @@ docker compose exec -T mcp rm /tmp/note.md
 
 ## How memory is organized
 
+The engine also includes an extensible RDF/RDFS vocabulary with **56 domain classes and 99
+properties**, SHACL validation and local OWL 2 RL reasoning. It reuses references from
+Schema.org, PROV-O, SKOS, OWL-Time and ORG. The agent can inspect definitions with
+`knowledge_schema`; `reason_memory` executes formal deductions with premise/source links.
+Everything runs in the existing Python container. See the
+[knowledge layer guide](docs/knowledge.md) for the catalog, RDF exports, validation,
+reasoning examples, extension format and temporal safeguards.
+
 ```text
 Agent / LM Studio
         ⇅ MCP HTTP or stdio through docker compose exec
@@ -426,7 +434,8 @@ A first prompt to check retrieval without adding memories:
 > Show the sources of the retrieved memories.
 
 Exposed tools: `remember`, `extract_source`, `recall`, `read_source`, `correct`, `revise`, `retract`,
-`explain`, `history`, `find_entities`, `add_alias`, `merge_entities`, and `memory_status`. The `memory://source/SOURCE_ID/REVISION` resource
+`explain`, `history`, `find_entities`, `add_alias`, `merge_entities`, `memory_status`,
+`knowledge_schema`, `validate_knowledge`, `export_rdf`, and `reason_memory`. The `memory://source/SOURCE_ID/REVISION` resource
 and `memory_policy` prompt are also available.
 Maintenance operations (`replay`, `reembed`) use the CLI; no tool exposes arbitrary Cypher.
 

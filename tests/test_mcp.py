@@ -229,6 +229,23 @@ async def test_http_credentials_enforce_read_and_write_permissions(engine):
         )
         assert not saved.json()["result"]["isError"]
         assert engine.status()["claims"] == 1
+        for tool, arguments in (
+            ("knowledge_schema", {"query": "participation", "kind": "properties"}),
+            ("validate_knowledge", {"scope": "personal"}),
+            ("export_rdf", {"scope": "personal", "format": "turtle"}),
+            ("reason_memory", {"scope": "personal"}),
+        ):
+            inspected = await client.post(
+                "/mcp",
+                headers=read_headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 9,
+                    "method": "tools/call",
+                    "params": {"name": tool, "arguments": arguments},
+                },
+            )
+            assert not inspected.json()["result"].get("isError"), inspected.json()
         for tool, args in (
             (
                 "extract_source",

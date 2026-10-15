@@ -27,3 +27,6 @@ class Settings(BaseSettings):
     mcp_requests_per_minute: int = Field(default=300, ge=1, le=10000)
     mcp_max_inflight: int = Field(default=8, ge=1, le=128)
     mcp_max_body_bytes: int = Field(default=2097152, ge=1024, le=16777216)
+    semantic_max_claims: int = Field(default=250, ge=1, le=2000)
+    semantic_max_triples: int = Field(default=100000, ge=1000, le=1000000)
+    vocabulary_extension_path: Path | None = None

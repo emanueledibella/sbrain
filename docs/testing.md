@@ -122,6 +122,7 @@ To retain reports after the disposable test container exits:
 mkdir -p .runtime/test-results
 chmod 700 .runtime/test-results
 docker compose --profile test run --rm \
+  --user "$(id -u):$(id -g)" \
   -v "$PWD/.runtime/test-results:/results" \
   tests -m pytest -q -p no:cacheprovider -m worker_e2e \
   --basetemp=/results/worker-recovery --junitxml=/results/worker-recovery.xml
@@ -135,3 +136,51 @@ Cleanup runs even when an assertion fails: child processes are killed and awaite
 substitutes and sockets are closed, and the live variant deletes only nodes carrying its
 random test vault ID. Other vaults, service configuration and the deployment worker remain
 untouched. See [recovery operation](reliability-and-recovery.md) for production settings.
+
+## GitHub Actions
+
+The [CI workflow](../.github/workflows/ci.yml) runs on **every push and pull request**, on
+all branches, and can also be started manually from the repository's **Actions → CI →
+Run workflow** page. Its check is named **Full suite (Ollama + Neo4j)**. New commits cancel
+an older run for the same branch or pull request. No repository secrets or paid model API
+are required, including for fork pull requests (GitHub may require maintainer approval
+before running a first-time contributor's workflow).
+
+The job uses an Ubuntu 24.04 CPU runner and the existing Docker test image and pinned
+service images. The [CI Compose override](../.github/compose.ci.yaml) requires Compose
+2.24.4 or newer, removes host database/model ports, and runs Ollama and the test container
+with the runner's UID/GID so model-cache files and disposable results remain readable.
+The job:
+
+1. Generates fresh Neo4j and MCP credentials with the usual initializer and masks them in
+   Actions output. Each run has a unique Compose project and its own database volumes.
+2. Restores cached Ollama model files, builds the test image and runs Ruff over source,
+   tests and scripts.
+3. Starts Neo4j and Ollama, waits for both health checks and downloads missing
+   `qwen2.5:1.5b` and `embeddinggemma` models through `models-init`.
+4. Runs the **entire pytest suite** with both integration flags enabled, including both
+   worker recovery scenarios described above. The tests launch their own real MCP and
+   worker processes; deployment MCP/worker containers and a Docker socket are unnecessary.
+5. Checks JUnit results with [`ci_results.py`](../scripts/ci_results.py). The job fails if
+   there are failures, errors or **any skips**, or either required worker scenario is
+   missing or duplicated. The Actions job summary includes the resulting counts.
+6. Uploads an allowlist of reports and logs, even after failures, then removes disposable
+   containers, networks and database volumes. Pytest's exit status is preserved through
+   log capture; a failing test is not automatically rerun to hide a failure.
+
+Open the run in [GitHub Actions](https://github.com/emanueledibella/sbrain/actions/workflows/ci.yml)
+to inspect individual steps and the job summary. Download its `test-results-<run>-<attempt>`
+artifact for JUnit XML, pytest output, model initialization output, service status/logs,
+worker/MCP subprocess logs and the two recovery stage reports. Artifacts expire after
+**seven days**. The upload excludes `.env`, source Markdown, event ledgers, SQLite queues,
+probe files and model files. All test memories are fictional and disposable.
+
+Only Ollama's model directory (blobs, manifests and model metadata) is cached, excluding
+its private server key, credentials, database and vault. The cache key includes the runner
+OS/architecture and both Compose files; changing those files invalidates it. A cache miss
+simply downloads the models.
+Initial image/model downloads are the slowest part of a cold run. The complete job has a
+30-minute limit, with separate limits for building, service startup, downloads and tests.
+GitHub actions are pinned to commit SHAs; the workflow token has only `contents: read`, and
+checkout does not persist credentials. Local Docker startup and its persistent volumes
+continue to use `compose.yaml` alone.

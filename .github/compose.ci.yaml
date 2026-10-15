@@ -1,0 +1,27 @@
+# Merge with compose.yaml. Only the tests and their dependencies are started in CI.
+# Requires Docker Compose 2.24.4+ for !override.
+services:
+  neo4j:
+    ports: !reset []
+
+  ollama:
+    ports: !reset []
+    user: "${SB_CI_UID:?Set the runner UID}:${SB_CI_GID:?Set the runner GID}"
+    environment:
+      HOME: /tmp/ollama-home
+      OLLAMA_MODELS: /models
+    volumes: !override
+      - type: bind
+        source: ${SB_CI_MODEL_CACHE:?Set a disposable CI model-cache directory}
+        target: /models
+        bind:
+          create_host_path: false
+
+  tests:
+    user: "${SB_CI_UID:?Set the runner UID}:${SB_CI_GID:?Set the runner GID}"
+    volumes:
+      - type: bind
+        source: ${SB_CI_RESULTS:?Set a disposable CI results directory}
+        target: /results
+        bind:
+          create_host_path: false

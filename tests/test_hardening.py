@@ -13,6 +13,21 @@ from second_brain.store import CorruptVault, Vault
 from .conftest import extraction
 
 
+def test_status_exposes_active_extraction_policy(engine):
+    engine.settings.chat_model = "local-custom-model"
+    engine.settings.model_output_tokens = 4096
+    engine.settings.model_timeout = 123
+    policy = engine.status()["extraction"]
+    assert policy == {
+        "model": "local-custom-model",
+        "quality_version": "source-contracts-v5",
+        "verification": "deterministic_source_contracts",
+        "context_tokens": engine.settings.model_context,
+        "output_tokens": 4096,
+        "request_timeout_seconds": 123,
+    }
+
+
 def relation(engine):
     text = "Marco is joining the trip."
     return engine.remember(
@@ -435,7 +450,7 @@ def test_shared_source_is_hash_verified_once_per_response(engine, monkeypatch):
     draft["claims"].append(
         {
             "subject_ref": "trip",
-            "predicate": "participation",
+            "predicate": "has_participant",
             "value": "Marco",
             "statement": "Marco is joining the trip.",
             "quote": "Marco is joining the trip.",

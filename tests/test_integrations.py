@@ -1,3 +1,4 @@
+import json
 import os
 
 import httpx
@@ -131,7 +132,7 @@ def test_live_engine_end_to_end(tmp_path):
     engine = MemoryEngine(Settings(vault_path=tmp_path / "end-to-end"))
     try:
         result = engine.remember("The trip destination is Palermo.", scope="test")
-        assert result["status"] == "indexed", result
+        assert result["status"] == "indexed", json.dumps(result, ensure_ascii=False)
         assert result["claim_ids"]
         recalled = engine.recall("Where are we going on the trip?", scope="test")
         assert not recalled["warnings"], recalled
@@ -201,7 +202,7 @@ def test_ollama_repairs_invalid_entity_references_once(monkeypatch):
     settings = Settings(_env_file=None)
     models = Ollama(settings)
     original = extraction()
-    invalid = {"entities": [], "claims": original["claims"]}
+    invalid = {"entities": [], "claims": [{**original["claims"][0], "subject_ref": "opaque_ref"}]}
     outputs = [invalid, original]
     bodies = []
 
@@ -224,7 +225,7 @@ def test_ollama_repairs_invalid_entity_references_once(monkeypatch):
     assert models.extract("The trip goes to Palermo.", source, []).claims[0].value == "Palermo"
     assert len(bodies) == 2
     assert bodies[0]["format"]["required"] == ["entities", "claims"]
-    assert "unknown entity" in bodies[1]["messages"][-1]["content"]
+    assert "Missing subject ref" in bodies[1]["messages"][-1]["content"]
 
 
 def test_ollama_does_not_retry_validation_forever(monkeypatch):

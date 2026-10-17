@@ -58,15 +58,24 @@ Each change creates an immutable source recording the declaration and reason and
 a change event. Existing ledger events and source originals are not overwritten. A
 retraction is not a privacy purge: the original data remains stored.
 
-The change path bypasses Qwen extraction. Replacement claims receive new embeddings when
+The change path bypasses chat extraction. Replacement claims receive new embeddings when
 available. Python checks enforce parameters, temporal consistency and the expected target
 version; if another writer changes that version first, the operation is rejected and must
 be reloaded rather than silently overwriting it.
 
-Currently, `correct` and `revise` preserve the target claim's subject, predicate, context,
-scope and object ID. They update the supplied value, statement, applicable dates and
-optional polarity. They do not support changing the object entity ID. This matters for
-entity-valued relations: changing a readable value does not repoint the graph edge.
+`correct` and `revise` preserve the target claim's subject, predicate, context and scope.
+They update the supplied value, statement, applicable dates and optional polarity.
+Unchanged target values, approved aliases and polarity-only corrections retain object
+identity. Legacy descriptive values such as participation `yes/no` also retain their
+separate target. When the old value identifies its object by name and the replacement
+no longer names that same object or an approved alias, the previous link is detached:
+a new `Madrid` value must never keep pointing to the `Dublin` node. The replacement
+records `object_link_change=detached_changed_value` and `previous_object_id` in provenance. Old versions retain their original links.
+
+These operations do not accept a new object entity ID and do not guess a replacement
+identity. The replacement remains a readable literal assertion, compatible with the
+manual-change contract. Register a reviewed structured assertion through `remember`
+when a new explicit entity link is required. Existing ledger entries are not rewritten.
 
 The extraction-and-SHACL pipeline applies to `remember` and `extract_source`. Explicit
 change operations have their own Python validation path and do not run that extraction

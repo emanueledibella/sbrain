@@ -12,14 +12,32 @@ and connect an MCP client. Read the following pages to understand what happens a
 | Topic | Contents |
 | --- | --- |
 | [Architecture and components](architecture.md) | Docker services, the MCP boundary, `MemoryEngine`, local models and component responsibilities |
-| [Storage and data model](storage-and-data-model.md) | The vault, immutable Markdown originals, event ledger, entities, claims, evidence and the Neo4j graph |
-| [Memory ingestion](ingestion.md) | The complete `remember` flow, identity resolution, validation, embeddings and adoption |
-| [Memory retrieval](retrieval.md) | The complete `recall` flow, temporal filters, vector similarity, graph expansion, ranking and source verification |
+| [Storage and data model](storage-and-data-model.md) | The vault, originals, event replay and state reconstruction, claims, evidence and Neo4j assertion versions |
+| [Memory ingestion](ingestion.md) | The complete `remember` flow, exact validation checks, temporary RDF, embeddings, ledger adoption and Neo4j writes |
+| [Memory retrieval](retrieval.md) | The complete `recall` flow, vector fundamentals and learning resources, temporal filters, graph expansion, scoring and source verification |
 | [Temporal memory and corrections](temporal-memory-and-corrections.md) | Valid time, knowledge time, corrections, real-world changes, retractions and identity history |
 | [Reasoning and agent decisions](reasoning.md) | Who requests deductions, where OWL executes and how conclusions retain their premises |
 | [Reliability and recovery](reliability-and-recovery.md) | SQLite jobs, restart recovery, automatic retries, `needs_review`, configuration and operator commands |
 | [Knowledge vocabulary reference](knowledge.md) | RDF/RDFS, reused vocabularies, SHACL shapes, OWL profile, exports and vocabulary extensions |
+| [Extraction quality](extraction-quality.md) | Deterministic source contracts, complete identities, typed object references, temporal anchors and acceptance limits |
+| [Local model operation](local-model-operation.md) | LFM defaults, container updates, generation budgets, client timeouts and host sleep |
+| [LFM deployment verification](benchmarks/2026-10-17-lfm-deployment.md) | New Italian memories over real MCP, remaining coverage limits, source/graph integrity and timeout investigation |
+| [Preference recovery verification](benchmarks/2026-10-17-preference-recovery.md) | Literal/object preference contracts, recovery of the same saved revision, concurrent retries and duplicate/integrity checks |
+| [Qwen/LFM regression results](benchmarks/2026-10-16-deterministic-extraction.md) | Measured errors, fact coverage, latency, RAM and typed edges with deterministic controls |
+| [Qwen/LFM coverage improvements](benchmarks/2026-10-16-coverage-extraction.md) | False-rejection fixes, repeated matched benchmark, remaining failures and measured costs |
 | [Automated tests and CI](testing.md) | Worker outage, retry, restart, review and deduplication checks; full-suite GitHub Actions with real Ollama and Neo4j |
+
+## Common implementation questions
+
+| Question | Explanation |
+| --- | --- |
+| What do quote, identity and date checks actually verify? | [Concrete validation checks](ingestion.md#evidence-identity-and-time-checks) |
+| Where does RDF enter the extraction pipeline? | [Temporary RDF and SHACL validation](ingestion.md#rdf-and-shacl-during-validation) |
+| What happens after validation, and is the claim saved in Neo4j? | [Ledger commit, graph writes and failure outcomes](ingestion.md#7-update-projections-and-report-the-outcome) |
+| What does reconstructing memory state mean? | [Event replay, versions, temporal filtering and caching](storage-and-data-model.md#reconstructing-state-from-events) |
+| How do vectors work, and where can I learn more? | [Cosine similarity and primary learning resources](retrieval.md#how-vectors-are-compared) |
+| How are text, vector and graph results combined? | [Neo4j search](retrieval.md#4-search-neo4j-and-expand-through-shared-entities) and [canonical scoring](retrieval.md#5-rank-canonical-candidates) |
+| Does OWL reasoning run after search on its results? | [Separate retrieval and reasoning paths](reasoning.md#where-reasoning-fits-in-the-workflow) |
 
 ## Implemented behavior
 

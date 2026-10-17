@@ -20,7 +20,7 @@ does not train a model, and ordinary retrieval does not automatically execute OW
 | SQLite recovery queue, on the `jobs_data` volume | Persists job state, attempts, scheduled retries, leases and worker heartbeats. |
 | Local vault | Stores immutable Markdown originals, the event ledger and generated Markdown views. |
 | Ollama, in its own container | Runs local models through `/api/chat` and `/api/embed`. |
-| Qwen, configured by default as `qwen2.5:1.5b` | Proposes structured extractions from free text. |
+| LFM, configured by default as `LiquidAI/lfm2.5-2.6b:q4_k_m` | Proposes structured extractions from free text. |
 | EmbeddingGemma, configured as `embeddinggemma` with 768 dimensions | Produces comparable vectors for claim statements and search questions. |
 | Neo4j, in its own container | Stores the graph projection, full-text index and vector index. |
 | RDF/RDFS/OWL vocabulary | Defines concepts, canonical relation names, class hierarchies and supported axioms. |
@@ -109,5 +109,5 @@ entity Markdown profiles and RDF representations are derived from them. RDF snap
 are built on demand; there is no additional persistent RDF database service.
 
 Storing more memories grows the files, graph and indexes. It does not modify the weights
-of Qwen or EmbeddingGemma. See the [storage model](storage-and-data-model.md),
+of LFM or EmbeddingGemma. See the [storage model](storage-and-data-model.md),
 [ingestion flow](ingestion.md) and [retrieval flow](retrieval.md).

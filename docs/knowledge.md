@@ -77,7 +77,9 @@ path and the limits of relying on agent instructions.
 4. Existing Python checks validate quotes, entity identities, scope, classifications and
    time intervals. SHACL checks the candidate graph's structure and registered relation
    signatures. SHACL also checks that the referenced entities and sources share its scope.
-5. A rejected local-model response gets one repair attempt, including SHACL feedback.
+5. A rejected local-model response gets one repair attempt, including SHACL feedback
+   and bounded source-contract diagnostics. These are repair inputs, not authorization
+   to adopt: the repaired response must pass the same checks again.
    A failed batch leaves its original pending. A successful batch is adopted in the ledger.
 
 Compose runs an independent worker that retries pending extraction, missing/incompatible
@@ -95,6 +97,11 @@ Registered entity-to-entity relations check their expected classes. Subclasses a
 
 The profile is open: an unknown precise predicate or entity kind remains usable through a
 stable extension IRI. It receives structural validation, but no invented ontology rules.
+This describes storage, manual submissions and historical data. Automatic local-model
+adoption additionally requires registered relation/type signatures and a deterministic
+source contract; unknown terms or unsupported wording remain pending. Registered
+extension keys support explicit controlled-language triples; new natural-language
+paraphrases need tested contracts. See [extraction quality](extraction-quality.md).
 Literal-only legacy relationship values remain qualified claims. For example, an old
 `destination="Torino"` claim is preserved without inventing a `Place` entity. It is not
 silently promoted to an entity-valued OWL relationship.

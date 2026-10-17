@@ -50,6 +50,52 @@ Reading an original checks its SHA-256 hash. Returning evidence also checks that
 character slice still equals the recorded quote. An integrity failure is not silently
 treated as a valid source.
 
+## Reconstructing state from events
+
+[`State`](../src/second_brain/state.py) reads ledger events in order and applies them to
+in-memory Python structures. It registers sources and entities, creates claim versions,
+applies corrections/revisions/retractions, records identity decisions and updates vectors.
+This deterministic replay does not ask a language model to reinterpret the originals.
+
+For example, a fictional correction produces this sequence:
+
+```text
+1. source_saved: preserve the note
+2. extracted: adopt C1, "Luca is joining the trip."
+3. changed: correct C1 and add C2, "Luca is not joining the trip."
+```
+
+The reconstructed state retains both claims and their evidence. C1 has an earlier active
+version and a later retracted version; C2 is active after the correction. A knowledge
+snapshot before the correction can still select C1. Updated knowledge selects C2, subject
+to its validity interval. The history is retained rather than overwritten.
+
+| State structure | Purpose |
+| --- | --- |
+| `entities`, `sources`, `claims` | Look up registered records by ID or source-revision key |
+| `versions`, `claim_versions` | Retain and locate historical claim versions |
+| `current` | Locate each claim's latest version, which may be retracted |
+| `changes`, `identity_changes` | Retain assertion changes, aliases and merges |
+| `source_claims`, `entity_claims` | Locate claims supported by a source or involving an entity |
+
+`State.visible()` selects an active version only when both intervals contain the requested
+times, with inclusive starts and exclusive ends:
+
+```text
+recorded_from <= known_at < recorded_to
+valid_from    <= valid_at < valid_to
+```
+
+An absent end leaves that interval open. Scope and epistemic filters are also applied;
+identity resolution uses aliases and merges applicable to the same dates. See
+[temporal memory](temporal-memory-and-corrections.md) for the two time axes.
+
+[`MemoryEngine._state()`](../src/second_brain/engine.py) caches this state by ledger head.
+An unchanged head reuses the cache; a ledger extending the cached history applies only
+new events. Otherwise, state is rebuilt from the full event sequence. This in-memory
+reconstruction is distinct from the CLI `replay` command, which also forces rebuilding
+Neo4j and Markdown projections.
+
 ## Markdown views
 
 `entities/` contains generated profiles with an entity's ID, type, scope, identity history,
@@ -139,6 +185,20 @@ flowchart LR
 Other projected relationships include `MERGED_INTO` for explicit identity decisions.
 This representation can retain conflicting statements and show when and on what evidence
 each was recorded. A contradictory new source does not silently erase an old assertion.
+
+An `Assertion` node's `id` identifies a version, while `claim_id` identifies the underlying
+claim across its versions. Its properties include the statement, predicate/value, scope,
+context, epistemic status, polarity, validity interval, knowledge interval, status, optional
+embedding/model and provenance. The `SUPPORTED_BY` relationship stores `quote`, `start`
+and `end`; the linked `SourceRevision` stores source metadata and the original's hash/path.
+Full source text remains in the immutable vault file.
+
+[`Neo4jGraph.sync()`](../src/second_brain/graph.py) projects the canonical `State` in a
+Neo4j write transaction. When the checkpoint matches the ledger head and configuration,
+it skips unchanged work. A compatible earlier checkpoint permits incremental projection;
+otherwise it rebuilds that vault's projection. The temporary RDF validation graph is not
+the input to this write. See [post-validation adoption](ingestion.md#6-adopt-under-the-writer-lock)
+for the separate ledger commit that precedes graph synchronization.
 
 ## Persistence and reconstruction
 

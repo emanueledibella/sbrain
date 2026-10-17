@@ -199,6 +199,7 @@ class Vocabulary:
         core = [
             "participation",
             "destination",
+            "planned_visit",
             "works_on",
             "works_for",
             "member_of",

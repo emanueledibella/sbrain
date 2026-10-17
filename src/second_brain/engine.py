@@ -26,6 +26,7 @@ from .models import (
     uid,
 )
 from .ollama import Ollama
+from .quality import QUALITY_VERSION
 from .semantics import Semantics
 from .state import State, overlaps
 from .store import Vault, atomic_write, private_directory
@@ -183,6 +184,7 @@ class MemoryEngine:
         private_directory(locks)
         with FileLock(
             locks / f"{source.source_id}-{source.revision}.lock",
+            # Two extraction attempts with deterministic validation, then embedding.
             timeout=self.settings.model_timeout * 3 + 30,
             mode=0o600,
         ):
@@ -208,7 +210,7 @@ class MemoryEngine:
                     provenance = {
                         "origin": "local_model",
                         "model": self.settings.chat_model,
-                        "extractor_version": 4,
+                        "extractor_version": 9,
                     }
                     if hasattr(self.models, "provenance"):
                         provenance.update(self.models.provenance())
@@ -489,12 +491,32 @@ class MemoryEngine:
         if kind != "retraction":
             warnings.extend(vector_warnings)
             start = text.index(statement)
+            replacement_object_id = target.object_id
+            if target.object_id:
+                names = {
+                    name.casefold() for name in state.names(target.object_id, recorded, recorded)
+                }
+                # Canonical target values must not retain an edge to a different entity.
+                # Legacy descriptive values (e.g. participation yes/no) keep their target.
+                if target.value.casefold() in names and value.casefold() not in names:
+                    replacement_object_id = None
             replacements = [
                 Claim(
                     id=uid(),
                     subject_id=target.subject_id,
-                    object_id=target.object_id,
-                    provenance={"origin": "user_change", "extractor_version": 2},
+                    object_id=replacement_object_id,
+                    provenance={
+                        "origin": "user_change",
+                        "extractor_version": 3,
+                        **(
+                            {
+                                "object_link_change": "detached_changed_value",
+                                "previous_object_id": target.object_id,
+                            }
+                            if target.object_id and replacement_object_id is None
+                            else {}
+                        ),
+                    },
                     predicate=target.predicate,
                     value=value,
                     context=target.context,
@@ -1164,6 +1186,14 @@ class MemoryEngine:
                 "embeddings_incompatible": sum(
                     not self.compatible_embedding(c) for c in state.claims.values()
                 ),
+                "extraction": {
+                    "model": self.settings.chat_model,
+                    "quality_version": QUALITY_VERSION,
+                    "verification": "deterministic_source_contracts",
+                    "context_tokens": self.settings.model_context,
+                    "output_tokens": self.settings.model_output_tokens,
+                    "request_timeout_seconds": self.settings.model_timeout,
+                },
                 "knowledge": {
                     "vocabulary_version": self.vocabulary.data["version"],
                     "vocabulary_sha256": self.vocabulary.digest,

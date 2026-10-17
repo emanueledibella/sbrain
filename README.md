@@ -48,17 +48,23 @@ check the vault, database, and models. All published ports bind only to `127.0.0
 Inside the container, the engine uses `bolt://neo4j:7687` and `http://ollama:11434` over the
 Compose network. Use service names to reach other containers.
 
-The default models are `qwen2.5:1.5b` for extraction and `embeddinggemma` for embeddings.
+The default models are `LiquidAI/lfm2.5-2.6b:q4_k_m` for extraction and `embeddinggemma`
+for embeddings. LFM's generation budget is 8,192 tokens (including thinking), with a
+300-second HTTP timeout per model request, a 16,384-token context and four CPU threads.
+Extraction may use a second model request to repair a rejected draft; allow a longer
+timeout in MCP clients. See [local model operation](docs/local-model-operation.md).
 No API key or paid API is required. Initial downloads need internet access; processing and
 retrieval then use local services. On Apple Silicon, this Docker configuration runs Ollama
 on the **CPU**. The chat model in LM Studio is separate from the models used by the engine
 and can continue running in the native macOS application.
-The small extraction model provides a starting point: evaluate its semantic accuracy and
-entity resolution on your own examples. Quote validation checks exact source text. Local extraction also rejects common English/Italian
-negation and tentative-language classification mismatches and attempts one repair. These are
-conservative lexical guards, not a general semantic verifier; broad quotes may need narrowing.
-Manual/agent extraction remains available for reviewed interpretations. Failed extraction
-leaves the original saved and pending rather than silently adopting an unsupported memory.
+The small extraction model provides a starting point: evaluate accuracy and coverage
+on your own notes. Automatic extraction uses deterministic source contracts for complete
+names, relation direction, exact values, polarity, certainty and typed object references,
+as well as evidence, identity, temporal and SHACL checks. It makes no AI-review call.
+Unsupported or ambiguous language remains pending for retry/review. These conservative
+rules cover a defined Italian/English subset, not arbitrary language understanding.
+See [extraction quality](docs/extraction-quality.md) for supported forms and limits.
+Explicit manual/agent submissions remain available for reviewed interpretations.
 
 Models and resource settings are configurable in `.env` (see [.env.example](.env.example)).
 On a fresh installation, copy `.env.example` to `.env` **before** running `init.sh`, which
@@ -200,9 +206,12 @@ vault/
 
 A note can describe many entities and memories; a separate file for each attribute is not
 required. Entity IDs are stable, types are open strings (`person`, `event`, `project`, etc.),
-and predicates are extensible. To reuse an identity, the model must provide `existing_id`;
-the engine checks its scope, name, and type. A matching name alone does not merge entities.
-This conservative approach may create duplicates. Use `find_entities`, `add_alias`, and
+and predicates are extensible. Automatic adoption also requires registered signatures and
+supported source contracts; manual submissions retain the explicit caller-assertion contract.
+The extractor can propose an offered `existing_id`; the engine checks scope, exact name,
+and type. It can complete a missing ID only for a unique exact offered identity. Known
+homonyms are ambiguous, and similar names never authorize reuse. This can still create
+duplicates. Use `find_entities`, `add_alias`, and
 `merge_entities` for explicit identity decisions. Merges require the same scope and type,
 reject cycles, and preserve original entity/claim IDs. Each alias/merge has a source, reason,
 effective time, and recording time; historical queries do not use later identity decisions.
@@ -230,7 +239,11 @@ Proposals and inferences are excluded from normal retrieval; include them with `
 The model proposes JSON data; the engine checks its schema, quotes, references, and intervals.
 A missing or ambiguous quote rejects the entire batch while preserving the original source.
 For a schema, quote, reference, or identity error, the local extractor attempts one repair using the
-validation message. If that fails, the batch remains pending without being adopted.
+validation message and bounded source-derived diagnostics (complete names, canonical
+relations, roles and evidence). Narrow decimal/date/participation equivalences and
+exact-name missing subject declarations can be normalized without another model call;
+see [extraction quality](docs/extraction-quality.md). If repair fails, the batch remains
+pending without being adopted.
 Conflicting new facts coexist and are reported as conflicts rather than automatically
 replacing one another. Detection compares the same subject, predicate, and context; it does
 not perform universal semantic comparison between statements.

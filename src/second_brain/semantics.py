@@ -115,8 +115,9 @@ class Semantics:
             if value is not None:
                 graph.add((node, SB[name], Literal(value)))
         item = self.vocabulary.property(claim.predicate)
-        # Legacy relation values may be plain text. Preserve them without inventing entities.
-        if item and (not item.get("range") or obj is not None):
+        # Plain-text objects remain valid legacy values. The subject's signature
+        # still applies: omitting object_ref must not bypass domain validation.
+        if item:
             graph.add((node, RDF.type, SB[item["term"] + "TypedClaim"]))
         for index, evidence in enumerate(claim.evidence):
             ev = URIRef(str(node) + f":evidence:{index}")

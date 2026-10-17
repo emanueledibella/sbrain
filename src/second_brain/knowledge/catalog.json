@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "namespace": "urn:sbrain:vocab:",
   "sources": [
     {
@@ -48,7 +48,9 @@
       },
       "parents": [],
       "external_class": "https://schema.org/Thing",
-      "aliases": []
+      "aliases": [
+        "object"
+      ]
     },
     {
       "key": "agent",
@@ -803,7 +805,9 @@
       "symmetric": false,
       "transitive": false,
       "single_in_context": false,
-      "aliases": [],
+      "aliases": [
+        "participant"
+      ],
       "related_term": "https://schema.org/attendee"
     },
     {
@@ -813,7 +817,7 @@
         "en": "destination",
         "it": "Destinazione"
       },
-      "description": "Records destination for the subject, qualified by the memory scope, context, evidence and time.",
+      "description": "The destination of an event. A visit or itinerary stop during an event does not establish its destination.",
       "domain": "event",
       "range": "place",
       "inverse": "destination_of",
@@ -1906,7 +1910,7 @@
         "en": "preference",
         "it": "Preferenza"
       },
-      "description": "Records preference for the subject, qualified by the memory scope, context, evidence and time.",
+      "description": "A preference explicitly expressed by the subject. A tentative activity is not automatically a preference.",
       "domain": "entity",
       "range": null,
       "inverse": null,
@@ -2048,7 +2052,9 @@
       "transitive": false,
       "single_in_context": false,
       "aliases": [
-        "indirizzo_web"
+        "indirizzo_web",
+        "website",
+        "sito_web"
       ],
       "related_term": "https://schema.org/url"
     },
@@ -2200,7 +2206,9 @@
       "transitive": false,
       "single_in_context": false,
       "aliases": [
-        "prezzo"
+        "prezzo",
+        "cost",
+        "costo"
       ],
       "related_term": "https://schema.org/price"
     },
@@ -2602,6 +2610,30 @@
         "identificativo"
       ],
       "related_term": "https://schema.org/identifier"
+    },
+    {
+      "key": "planned_visit",
+      "term": "PlannedVisit",
+      "label": {
+        "en": "planned visit",
+        "it": "visita prevista"
+      },
+      "description": "A visit or itinerary stop explicitly associated with an event; certainty is recorded on the claim. It does not assert the event destination.",
+      "domain": "event",
+      "range": "place",
+      "aliases": []
+    },
+    {
+      "key": "payment_status",
+      "term": "PaymentStatus",
+      "label": {
+        "en": "payment status",
+        "it": "stato del pagamento"
+      },
+      "description": "The stated status of a payment associated with the subject.",
+      "domain": "entity",
+      "range": null,
+      "aliases": []
     }
   ]
 }

@@ -14,13 +14,13 @@ class Settings(BaseSettings):
     neo4j_password: SecretStr = Field(default=SecretStr(""), validation_alias="NEO4J_PASSWORD")
     neo4j_database: str = "neo4j"
     ollama_url: str = "http://127.0.0.1:11434"
-    chat_model: str = "qwen2.5:1.5b"
+    chat_model: str = "LiquidAI/lfm2.5-2.6b:q4_k_m"
     embedding_model: str = "embeddinggemma"
     embedding_dimensions: int = Field(default=768, ge=1, le=8192)
-    model_timeout: float = Field(default=180, gt=0, le=600)
+    model_timeout: float = Field(default=300, gt=0, le=600)
     model_threads: int = Field(default=4, ge=1, le=128)
     model_context: int = Field(default=16384, ge=2048, le=131072)
-    model_output_tokens: int = Field(default=2048, ge=256, le=16384)
+    model_output_tokens: int = Field(default=8192, ge=256, le=16384)
     max_source_chars: int = Field(default=24000, ge=100, le=200000)
     mcp_read_token: SecretStr = SecretStr("")
     mcp_write_token: SecretStr = SecretStr("")

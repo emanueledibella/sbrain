@@ -2,6 +2,30 @@
 
 [Documentation index](README.md)
 
+The full pytest suite also includes deterministic extraction regressions in
+[`test_quality.py`](../tests/test_quality.py). These use held-out names and wording
+to check complete identities, exact evidence, relation direction, polarity, certainty,
+typed targets, decimal/deadline equivalence, full participation phrases, exact-name
+missing subject declarations and bounded repair diagnostics. Adversarial counterparts
+must continue to fail (wrong currency/recurrence, timezone, target, truncated name,
+fabricated quote or altered negation). Run them without model/database services:
+
+```bash
+python -m pytest -q tests/test_quality.py
+```
+
+Behavioral tests and live model benchmarks have different purposes: deterministic
+regressions check acceptance boundaries; the [extraction quality documentation](extraction-quality.md)
+links measured Qwen/LFM coverage, accuracy, latency and RAM. Never run live integration
+tests concurrently with a timed benchmark. Saved model outputs may be replayed as
+diagnostics, but are not new inference measurements.
+
+[`test_preference_contracts.py`](../tests/test_preference_contracts.py) checks the
+literal/object preference distinction through the automatic extractor, including
+negation, uncertainty, inverse roles, exact targets, omitted declarations and competing
+representations. Its mixed-note regression races foreground/recovery extraction of
+the same saved revision and asserts one adoption, two claims and no extra sources.
+
 The complete fault/restart/review scenario is part of the pytest suite in
 [`test_worker_e2e.py`](../tests/test_worker_e2e.py). It uses the actual MCP HTTP transport,
 `MemoryEngine`, SQLite queue, local worker loop and durable vault storage in separate
@@ -19,6 +43,14 @@ output or installed services. Its substitute implements the actual Ollama HTTP r
 formats, returns HTTP 503 during the injected outage, and counts successful extractions.
 The live variant uses the configured local extraction and embedding models after recovery
 and verifies Neo4j's actual projection checkpoint.
+
+Live recovery waits and MCP HTTP timeouts follow the model request budget: two chat
+requests, one embedding request and a 30-second margin. Transport readiness still has
+its short explicit deadline, and the controlled variant retains its original bound.
+This prevents a valid slower LFM recovery from being cut off by the old fixed 180-second
+test timeout. See [local model operation](local-model-operation.md) for production
+client timeouts and host-sleep limitations, and the [deployment smoke test](benchmarks/2026-10-17-lfm-deployment.md)
+for fresh Italian sources and remaining coverage limits.
 
 The integration variant is skipped outside an explicitly enabled live environment. A
 skip is not evidence that real services passed. Compose sets both integration flags and
@@ -157,7 +189,7 @@ The job:
 2. Restores cached Ollama model files, builds the test image and runs Ruff over source,
    tests and scripts.
 3. Starts Neo4j and Ollama, waits for both health checks and downloads missing
-   `qwen2.5:1.5b` and `embeddinggemma` models through `models-init`.
+   `LiquidAI/lfm2.5-2.6b:q4_k_m` and `embeddinggemma` models through `models-init`.
 4. Runs the **entire pytest suite** with both integration flags enabled, including both
    worker recovery scenarios described above. The tests launch their own real MCP and
    worker processes; deployment MCP/worker containers and a Docker socket are unnecessary.
@@ -180,7 +212,8 @@ its private server key, credentials, database and vault. The cache key includes 
 OS/architecture and both Compose files; changing those files invalidates it. A cache miss
 simply downloads the models.
 Initial image/model downloads are the slowest part of a cold run. The complete job has a
-30-minute limit, with separate limits for building, service startup, downloads and tests.
+45-minute limit, with a 20-minute suite limit and separate limits for building, service
+startup and downloads. CI uses the same LFM extraction default as deployment.
 GitHub actions are pinned to commit SHAs; the workflow token has only `contents: read`, and
 checkout does not persist credentials. Local Docker startup and its persistent volumes
 continue to use `compose.yaml` alone.

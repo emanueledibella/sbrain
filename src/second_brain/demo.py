@@ -15,7 +15,7 @@ def run_demo(engine: MemoryEngine) -> dict:
         title="DEMO: trip (fictional information)",
         scope="demo",
         observed_at="2026-10-01T10:00:00+02:00",
-        request_id="demo-source-en-v2",
+        request_id="demo-source-en-v3",
         extraction={
             "entities": [{"ref": "trip", "name": "Demo trip", "kind": "event"}],
             "claims": [
@@ -29,11 +29,12 @@ def run_demo(engine: MemoryEngine) -> dict:
                 },
                 {
                     "subject_ref": "trip",
-                    "predicate": "participation",
+                    "predicate": "has_participant",
                     "value": "Marco: no",
                     "context": "Marco",
                     "statement": "Marco is not joining the trip.",
                     "quote": "Marco is not joining the trip.",
+                    "polarity": "negative",
                 },
                 {
                     "subject_ref": "trip",
@@ -53,7 +54,7 @@ def run_demo(engine: MemoryEngine) -> dict:
     ]
     first = next(c for c in claims if c["predicate"] == "destination" and c["value"] == "Palermo")
     participant = next(
-        c for c in claims if c["predicate"] == "participation" and c["value"] == "Marco: no"
+        c for c in claims if c["predicate"] == "has_participant" and c["value"] == "Marco: no"
     )
     updated = engine.change(
         first["id"],
@@ -62,7 +63,7 @@ def run_demo(engine: MemoryEngine) -> dict:
         statement="From October 4, the trip destination is Catania.",
         effective_at="2026-10-04T10:00:00+02:00",
         reason="DEMO: change of plans",
-        request_id="demo-update-en-v2",
+        request_id="demo-update-en-v3",
     )
     before = engine.explain(updated["replacement_id"])["recorded_at"]
     corrected = engine.change(
@@ -71,7 +72,7 @@ def run_demo(engine: MemoryEngine) -> dict:
         value="Marco: yes",
         statement="Marco is joining the trip.",
         reason="DEMO: correcting the initial mistaken information",
-        request_id="demo-correction-en-v2",
+        request_id="demo-correction-en-v3",
     )
     after = engine.explain(corrected["replacement_id"])["recorded_at"]
     results = {}

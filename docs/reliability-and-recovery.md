@@ -89,7 +89,7 @@ Restarting does not immediately steal a still-valid lease. Repeated interrupted 
 can also reach review.
 
 One worker loop per vault is enforced with a process file lock. Foreground and worker
-extraction additionally share a per-revision lock, preventing redundant Qwen calls for the
+extraction additionally share a per-revision lock, preventing redundant extraction calls for the
 same source. Slow model work does not hold the canonical ledger writer lock.
 
 Delivery is at least once. Extraction rechecks adoption before commit; embedding repair
@@ -173,7 +173,7 @@ docker compose exec -T mcp second-brain extract SOURCE_ID --revision REVISION
 # Recompute all claim embeddings in the current snapshot, including existing vectors.
 docker compose exec -T mcp second-brain reembed
 
-# Verify originals and force rebuild graph and Markdown views, without Qwen extraction.
+# Verify originals and force rebuild graph and Markdown views, without chat extraction.
 docker compose exec -T mcp second-brain replay
 ```
 

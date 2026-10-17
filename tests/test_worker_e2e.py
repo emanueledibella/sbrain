@@ -206,8 +206,12 @@ class RecoveryScenario:
             process.kill()
             await asyncio.wait_for(process.wait(), timeout=5)
 
-    @staticmethod
-    async def wait(predicate, timeout=180):
+    async def wait(self, predicate, timeout=None):
+        # A live extraction can make two chat calls followed by an embedding call.
+        # Keep readiness waits short via their explicit override, but do not impose
+        # the old Qwen deadline on a valid LFM recovery operation.
+        if timeout is None:
+            timeout = 3 * self.live_settings.model_timeout + 30 if self.live else 180
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             result = await predicate()
@@ -219,7 +223,9 @@ class RecoveryScenario:
     @asynccontextmanager
     async def client(self):
         async with httpx.AsyncClient(
-            headers={"Authorization": "Bearer " + self.writer}, trust_env=False, timeout=180
+            headers={"Authorization": "Bearer " + self.writer},
+            trust_env=False,
+            timeout=3 * self.live_settings.model_timeout + 30 if self.live else 180,
         ) as http:
             async with streamable_http_client(
                 f"http://127.0.0.1:{self.port}/mcp", http_client=http

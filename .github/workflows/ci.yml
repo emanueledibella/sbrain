@@ -16,7 +16,7 @@ jobs:
   suite:
     name: Full suite (Ollama + Neo4j)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -80,7 +80,7 @@ jobs:
 
       - name: Run full suite including both worker recovery scenarios
         id: suite
-        timeout-minutes: 12
+        timeout-minutes: 20
         run: |
           docker compose run --rm --no-deps tests \
             -m pytest -q -p no:cacheprovider --strict-markers \

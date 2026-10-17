@@ -4,7 +4,7 @@
 
 The `recall` tool retrieves recorded claims using lexical matching, vector similarity and
 graph proximity. It does not automatically execute OWL reasoning. The ordinary retrieval
-path uses the embedding model, not Qwen's chat extraction model.
+path uses the embedding model, separately from LFM's chat extraction model.
 
 ```mermaid
 flowchart TD
@@ -38,6 +38,8 @@ events or similarly named tests in the selected scope.
 
 The engine reads the ledger and obtains its canonical state. It reuses a cached state
 when the ledger head has not changed and incrementally applies new events where possible.
+See [state reconstruction](storage-and-data-model.md#reconstructing-state-from-events)
+for the concrete structures and correction example.
 
 It selects active assertion versions matching the requested scope and time snapshot:
 
@@ -69,11 +71,52 @@ the exact words in the question, but it is not an identity check or a truth scor
 
 If query embedding fails, the engine reports a warning and continues with textual search.
 
+### How vectors are compared
+
+An embedding is a list of numbers produced by a trained model. Its coordinates are learned
+jointly; they are not manually named fields such as "person" or "travel". In this project,
+each adopted claim's `statement` is embedded during ingestion, and the question is embedded
+at search time. Both use the configured model and vector dimensions, with 768 dimensions
+by default. The Python adapter sends text to Ollama's `/api/embed` endpoint.
+
+Cosine similarity compares the vectors' directions:
+
+```text
+cosine(a, b) = sum(a[i] * b[i]) / (sqrt(sum(a[i]^2)) * sqrt(sum(b[i]^2)))
+```
+
+This can connect "Who is joining the trip?" with "Luca is coming with us" despite different
+wording. It does not establish logical agreement: "Luca is joining" and "Luca is not joining"
+can concern the same topic and have similar vectors. Polarity, evidence and conflicts remain
+separate structured data.
+
+For a learning path and executable examples, use these primary sources:
+
+1. [Sentence Transformers: semantic search](https://sbert.net/examples/sentence_transformer/applications/semantic-search/README.html)
+   explains embedding a corpus and query into a shared space and retrieving nearby entries.
+2. [Sentence Transformers: semantic textual similarity](https://www.sbert.net/docs/sentence_transformer/usage/semantic_textual_similarity.html)
+   demonstrates similarity scores and comparison functions.
+3. [Google: original EmbeddingGemma model card](https://ai.google.dev/gemma/docs/embeddinggemma/model_card)
+   documents the text model's inputs, 768-dimensional output and training information.
+4. [Ollama: embeddings](https://docs.ollama.com/capabilities/embeddings)
+   shows calls to the local embedding API.
+
+Sentence Transformers is a learning reference here, not a runtime dependency of this
+repository. The implementation uses [`Ollama.embed()`](../src/second_brain/ollama.py)
+and the scoring code in [`MemoryEngine.recall()`](../src/second_brain/engine.py).
+
 ## 4. Search Neo4j and expand through shared entities
 
 Before search, the engine attempts to bring Neo4j's derived projection up to date. The
 search combines a full-text index and a vector index, with vault, scope, time, uncertainty
 and optional exact-identity constraints. The default search candidate limit is 200.
+
+[`Neo4jGraph.search()`](../src/second_brain/graph.py) extracts word tokens from the question
+and constructs a Lucene query from at most the first 30, quoting them and joining them
+with `OR` rather than accepting arbitrary Lucene syntax from the caller. The full-text
+index covers `statement`, `value`, `subject_name`, `object_name`, `context` and `predicate`.
+When a query vector is available, the vector branch also searches the configured cosine
+index; it currently requires a returned Neo4j score of at least `0.675`.
 
 Neo4j's vector procedure selects its initial candidates before namespace and temporal
 filters are applied. The canonical search described below therefore remains important;
@@ -91,8 +134,10 @@ The starting points are assertions found through text and vectors. Expansion fol
 shared entities; it is not an unrestricted traversal along every possible relationship
 or a formal OWL deduction.
 
-Neo4j contributes rank-based scores from full-text and vector results. Related assertions
-receive a small fallback contribution if they do not already have a search score.
+Neo4j contributes rank-based scores from full-text and vector results. Each branch uses
+`1 / (60 + rank)`, with zero-based rank, and the vector contribution is added to an existing
+text contribution. Related assertions receive `0.005` if they have no search score yet.
+These contributions are separate from the exact cosine calculation below.
 
 ## 5. Rank canonical candidates
 
@@ -112,6 +157,12 @@ score = lexical coverage
 Lexical coverage is the fraction of distinct question terms found in the claim's search
 text. A candidate is included when it has a lexical match, cosine similarity of at least
 0.35, or a Neo4j contribution. Scores order relevance, not reliability or factual truth.
+
+The canonical lexical pass case-folds text, extracts words with Python's `\w+` regular
+expression and compares sets of distinct words. This step does not perform stemming,
+stop-word removal or synonym expansion. Exact cosine is calculated only for matching
+model IDs and vector dimensions. Candidates are sorted by descending combined score,
+then by claim ID for ties.
 
 The exact canonical pass scans the visible candidate set. Its work grows with the number
 of visible claims, even though Neo4j supplies indexes and graph contributions.

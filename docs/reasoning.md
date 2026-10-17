@@ -52,6 +52,24 @@ another time. SHACL validation during ingestion is not OWL reasoning.
 automatically receive only the results of the preceding `recall` call, and its input is
 not selected by the previous query's vector ranking.
 
+Its inputs are `scope`, `valid_at`, `known_at`, `context` and `limit`; it has no query-text
+or retrieved-claim-list parameter. An agent can search first to identify a useful context,
+then request reasoning. It can also request reasoning directly. A supported deduction may
+therefore use a premise that did not appear in an earlier `recall` response.
+
+```mermaid
+flowchart TD
+    A["Canonical memory: sources and ledger"] --> B["recall"]
+    A --> C["reason_memory"]
+    B --> D["Text, vector and shared-entity search"]
+    D --> E["Recorded claims with evidence"]
+    C --> F["Temporal RDF snapshot and SHACL"]
+    F --> G["Eligible premises and OWL rules"]
+    G --> H["Deductions with proofs and sources"]
+    E --> I["Agent formulates the answer"]
+    H --> I
+```
+
 ## Exact execution path
 
 ```mermaid
@@ -99,6 +117,13 @@ The reasoner computes an OWL RL closure. The application returns only supported
 inverse/symmetric/transitive/class conclusions whose premises it can reconstruct. It
 filters bookkeeping triples and does not automatically merge entities through `owl:sameAs`.
 This is not unrestricted OWL DL reasoning or an arbitrary rule-execution endpoint.
+
+Concretely, `Semantics.reason()` combines each context's eligible facts with the ontology
+and calls `DeductiveClosure(OWLRL_Semantics, ...).expand(closure)`. A separate
+`_proof_closure()` tracks claim/entity premises and rule names for the supported rules.
+A returned conclusion must occur in the OWL closure, have a reconstructed proof and not
+already be an input fact; relationship conclusions are also subject to the contradiction
+checks above. These operations use Python graphs rather than language-model generation.
 
 ## Returned deductions and persistence
 

@@ -13,7 +13,7 @@ from datetime import datetime
 
 from .models import EntityDraft, instant
 
-QUALITY_VERSION = "source-contracts-v5"
+QUALITY_VERSION = "source-contracts-v6"
 
 
 def _canonical(value):
@@ -469,7 +469,7 @@ def bind_source_contracts(draft, text, vocabulary, entities, scope):
     result, repairs = draft.model_copy(deep=True), []
     witnesses = source_witnesses(text, vocabulary, strict=True)
     refs = {e.ref: e for e in result.entities}
-    covered = {}
+    covered, bindings = {}, []
     for index, claim in enumerate(result.claims):
         if claim.subject_ref not in refs or (claim.object_ref and claim.object_ref not in refs):
             raise ValueError("Claim references an unknown entity; populate the entities array")
@@ -592,13 +592,44 @@ def bind_source_contracts(draft, text, vocabulary, entities, scope):
             repairs.append(
                 {"claim_index": index, "field": "statement", "source_start": witness.start}
             )
+        # A model-selected topic label is not a source-supported qualifier. The
+        # current contracts preserve all qualifiers in the exact subject/target;
+        # none licenses an additional contextual partition of the same fact.
+        if claim.context != "default":
+            repairs.append(
+                {"claim_index": index, "field": "context", "from": claim.context, "to": "default"}
+            )
+            claim.context = "default"
         covered[wi] = claim.predicate
+        bindings.append(wi)
     if len(covered) != len(witnesses):
         raise ValueError("Extraction omits recognized source facts; return a COMPLETE extraction")
     if not result.claims and (result.entities or not re.fullmatch(_GREETINGS, text, re.I)):
         raise ValueError("Empty extraction is supported only for recognized non-memory greetings")
     # Newly materialized targets also pass name/identity grounding and offered-ID rules.
     result, identity_repairs = ground_draft(result, text, entities, scope)
+    refs = {e.ref: e for e in result.entities}
+    unique, signatures = [], {}
+    for index, (claim, witness) in enumerate(zip(result.claims, bindings, strict=True)):
+        signature = claim.model_dump(exclude={"quote", "quote_start", "statement"})
+        for field in ("subject_ref", "object_ref"):
+            ref = getattr(claim, field)
+            if ref:
+                entity = refs[ref]
+                signature[field] = ("existing", entity.existing_id) if entity.existing_id else (
+                    "new", ref
+                )
+        if witness in signatures:
+            if signatures[witness] != signature:
+                # Do not silently select one of two identities, intervals or
+                # classifications. Every retained claim still passes temporal
+                # grounding after binding; inconsistent duplicates fail closed.
+                raise ValueError("One source fact has incompatible duplicate claims")
+            repairs.append({"claim_index": index, "field": "duplicate_source_fact"})
+        else:
+            signatures[witness] = signature
+            unique.append(claim)
+    result.claims = unique
     return type(draft).model_validate(result.model_dump()), repairs + identity_repairs
 
 

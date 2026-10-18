@@ -20,6 +20,7 @@ and connect an MCP client. Read the following pages to understand what happens a
 | [Reliability and recovery](reliability-and-recovery.md) | SQLite jobs, restart recovery, automatic retries, `needs_review`, configuration and operator commands |
 | [Knowledge vocabulary reference](knowledge.md) | RDF/RDFS, reused vocabularies, SHACL shapes, OWL profile, exports and vocabulary extensions |
 | [Extraction quality](extraction-quality.md) | Deterministic source contracts, complete identities, typed object references, temporal anchors and acceptance limits |
+| [Memory consistency](memory-consistency.md) | Cardinality-aware conflicts, source-licensed preference comparison, context authority, deduplication and OWL premise safety |
 | [Local model operation](local-model-operation.md) | LFM defaults, container updates, generation budgets, client timeouts and host sleep |
 | [LFM deployment verification](benchmarks/2026-10-17-lfm-deployment.md) | New Italian memories over real MCP, remaining coverage limits, source/graph integrity and timeout investigation |
 | [Preference recovery verification](benchmarks/2026-10-17-preference-recovery.md) | Literal/object preference contracts, recovery of the same saved revision, concurrent retries and duplicate/integrity checks |

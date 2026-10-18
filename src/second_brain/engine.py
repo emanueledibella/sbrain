@@ -10,6 +10,7 @@ from filelock import FileLock
 from rdflib import Graph
 
 from .config import Settings
+from .consistency import ConflictIndex
 from .graph import Neo4jGraph
 from .jobs import JobQueue
 from .models import (
@@ -28,7 +29,7 @@ from .models import (
 from .ollama import Ollama
 from .quality import QUALITY_VERSION
 from .semantics import Semantics
-from .state import State, overlaps
+from .state import State
 from .store import Vault, atomic_write, private_directory
 from .validation import validate_entity_references, validate_extraction
 from .vocabulary import vocabulary
@@ -210,7 +211,7 @@ class MemoryEngine:
                     provenance = {
                         "origin": "local_model",
                         "model": self.settings.chat_model,
-                        "extractor_version": 9,
+                        "extractor_version": 10,
                     }
                     if hasattr(self.models, "provenance"):
                         provenance.update(self.models.provenance())
@@ -365,24 +366,18 @@ class MemoryEngine:
                 "Some memories have no embedding; run reembed for semantic search",
             ]
         at = instant(self.clock())
-        identities, _ = state.identity_view(at, at)
-        groups = {}
-        for version in state.current.values():
-            if version.status == "active":
-                other = version.claim
-                key = (other.scope, identities[other.subject_id], other.predicate, other.context)
-                groups.setdefault(key, []).append(other)
+        index = ConflictIndex(
+            state, self.vocabulary,
+            [v.claim for v in state.current.values() if v.status == "active"], at, at,
+        )
         conflicts = []
         for claim in claims:
-            key = (claim.scope, identities[claim.subject_id], claim.predicate, claim.context)
-            for other in groups.get(key, ()):
-                if (
-                    other.id != claim.id
-                    and other.epistemic == claim.epistemic == "explicit"
-                    and (other.value != claim.value or other.polarity != claim.polarity)
-                    and overlaps(other, claim)
-                ):
-                    conflicts.append({"claim_id": claim.id, "other_id": other.id})
+            current = state.current[claim.id]
+            if current.status == "active":
+                conflicts.extend(
+                    {"claim_id": claim.id, "other_id": identifier}
+                    for identifier in index.conflicts(current.claim)
+                )
         return {
             "source_id": source.source_id,
             "revision": source.revision,
@@ -755,6 +750,10 @@ class MemoryEngine:
             at = instant(self.clock())
             valid, known = instant(valid_at, at), instant(known_at, at)
         candidates = state.visible(valid, known, scope, include_uncertain)
+        # Identity filtering bounds returned memories, not the evidence of a
+        # contradiction. A competing target or literal denial can lack this
+        # entity's object_id while still conflicting in the same scoped view.
+        conflict_index = ConflictIndex(state, self.vocabulary, candidates, valid, known)
         identities, entity_names = state.identity_view(valid, known)
         if entity_id is not None:
             entity_id = canonical_id(entity_id)
@@ -785,15 +784,6 @@ class MemoryEngine:
                 )
             except Exception as exc:
                 warnings.append(warning("Neo4j search unavailable", exc))
-        groups = {}
-        for candidate in candidates:
-            key = (
-                candidate.scope,
-                identities[candidate.subject_id],
-                candidate.predicate,
-                candidate.context,
-            )
-            groups.setdefault(key, []).append(candidate)
         terms = set(re.findall(r"\w+", query.casefold()))
         query_norm = sum(x * x for x in vectors[0]) if vectors else 0
         ranked = []
@@ -845,15 +835,7 @@ class MemoryEngine:
                 if len(items) >= limit:
                     truncated = True
                     break
-                conflicts = [
-                    c.id
-                    for c in groups[
-                        (claim.scope, identities[claim.subject_id], claim.predicate, claim.context)
-                    ]
-                    if c.id != claim.id
-                    and c.epistemic == claim.epistemic == "explicit"
-                    and (c.value != claim.value or c.polarity != claim.polarity)
-                ]
+                conflicts = conflict_index.conflicts(claim)
                 item = self._describe(state, claim)
                 item.update(
                     score=round(score, 4),

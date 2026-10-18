@@ -65,6 +65,10 @@ Unsupported or ambiguous language remains pending for retry/review. These conser
 rules cover a defined Italian/English subset, not arbitrary language understanding.
 See [extraction quality](docs/extraction-quality.md) for supported forms and limits.
 Explicit manual/agent submissions remain available for reviewed interpretations.
+Automatic extraction uses a deterministic context and removes equivalent duplicate
+claims for the same source fact. Saved memories are compared using object identities,
+declared cardinality, source-supported preference representations and temporal overlap.
+See [memory consistency](docs/memory-consistency.md) for conflict and context rules.
 
 Models and resource settings are configurable in `.env` (see [.env.example](.env.example)).
 On a fresh installation, copy `.env.example` to `.env` **before** running `init.sh`, which

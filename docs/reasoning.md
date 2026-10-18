@@ -103,6 +103,12 @@ single-value constraint, relationship deductions for that context are suppressed
 warning. Entity class inheritance can also produce type deductions with classification
 provenance.
 
+Premise selection shares the [memory consistency policy](memory-consistency.md) used by
+ingestion and recall. A source-licensed literal/object preference contradiction excludes
+the conflicting positive premise without adding a property equivalence or deriving an
+entity-valued fact from a literal. Existing automatic topic labels cannot hide those
+conflicts; stored context graphs and explicit manual contexts remain preserved.
+
 | Rule | Example |
 | --- | --- |
 | Inverse property | `Luca participatesIn Trip` implies `Trip hasParticipant Luca` |

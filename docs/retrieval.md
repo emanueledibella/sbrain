@@ -169,9 +169,17 @@ of visible claims, even though Neo4j supplies indexes and graph contributions.
 
 ## 6. Attach conflicts and enforce response bounds
 
-The engine groups claims by scope, canonical subject, predicate and context. It reports
-other visible explicit claims with a different value or polarity as conflicts. This is a
-conservative structural comparison, not a universal semantic contradiction detector.
+The engine compares visible explicit claims through the shared
+[`ConflictIndex`](../src/second_brain/consistency.py). An affirmation and a denial of the
+same target conflict; different positive targets conflict only where the vocabulary
+declares `single_in_context`. Multi-valued relations can retain several compatible
+targets. Comparisons respect scope, approved identities, inverse/symmetric direction,
+contexts and overlapping validity intervals. A narrowly source-licensed bridge can
+compare literal and entity-valued preferences without changing their stored predicates.
+Identity filtering limits returned candidates; conflicting claim IDs are determined
+from the full temporal scope, so selecting one object cannot hide a competing target.
+See [memory consistency](memory-consistency.md) for contexts, homonyms and legacy records.
+This is a bounded comparison policy, not a universal semantic contradiction detector.
 
 The default result limit is 10. The default response budget is approximately 4,000 tokens,
 estimated as four characters per token over serialized items. Whole items that do not

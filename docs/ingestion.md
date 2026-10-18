@@ -189,8 +189,12 @@ warning. Such claims still support textual retrieval. See [recovery](reliability
 
 After slow model work, the engine reloads the latest state under the writer lock. It
 rechecks identity references and whether another request already processed the source.
-New entities and claims receive stable IDs. Identical duplicate claims within the same
-extraction are deduplicated.
+New entities and claims receive stable IDs. Automatic extraction normalizes ungrounded
+topic labels to `default` and deduplicates equivalent candidates for the same source
+witness before embeddings. Incompatible duplicate identities or intervals reject the
+batch. Explicit/manual contexts remain unchanged. Adoption also deduplicates fully
+identical claims. Separate sources retain their evidence and source IDs; no existing
+memory is rewritten by this deduplication. See [memory consistency](memory-consistency.md).
 
 An `extracted` event commits the entities and claims, including their quotes, source links,
 classification, validity, embedding and available provenance. Provenance includes origin,

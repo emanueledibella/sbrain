@@ -56,6 +56,8 @@ relation in that same clause. An object-only quote cannot establish a triple.
 | Polarity | The assertion/denial of the bound relation determines polarity. An affirmative pending status is positive; an explicitly denied participation is negative. Negation in another sentence does not flip this claim. |
 | Certainty | Recognized tentative clauses require `proposed`; affirmed clauses require `explicit`. Names such as `May Bell` do not count as modal verbs. Raw extraction cannot introduce `inferred` claims. |
 | Structural coverage | Every recognized source witness must be represented. Substantive clauses without a supported contract keep the source pending; they are not silently omitted. Only allowlisted greetings and explicit instruction clauses are excluded. This is not a proof of completeness for arbitrary language. |
+| Context | Automatic topic labels are normalized to `default`, with the proposed label retained in normalization provenance. Current contracts preserve qualifiers inside source subjects/targets; they do not license additional context partitions. Explicit/manual contexts are preserved. |
+| Duplicate source facts | Equivalent claims for one source witness become one claim. Differing identities, intervals, polarity, certainty or predicates are rejected instead of selecting one candidate. Distinct source occurrences and separate sources retain their evidence. |
 
 Source statements replace the candidate's readable `statement` with the exact
 supporting source clause; this mechanical change is logged. The original quote and
@@ -123,7 +125,7 @@ source witness that can support either representation. The binder checks the sam
 complete owner/target spans, covering quote, polarity, certainty, identity, role
 types and dates in both forms. Missing declarations/targets use the existing exact
 source-name rules; no fuzzy match or AI reviewer is introduced. The chosen property
-is preserved, and provenance records v5. There is no global alias or OWL equivalence
+is preserved. There is no global alias or OWL equivalence
 between a literal property and an object property.
 
 Wanting/desiring something does not license `prefers`; a tentative visit does not
@@ -181,10 +183,16 @@ start uses `observed_at`; the existing bitemporal ledger and corrections remain
 unchanged. These bounded rules do not implement general temporal language parsing.
 
 Accepted provenance includes `extractor_version`, `quality_checks.version`
-(`source-contracts-v5` for current automatic extractions), normalized draft digest,
+(`source-contracts-v6` for current automatic extractions), normalized draft digest,
 mechanical normalization details,
 verification method, bound claim count and the model/prompt/schema/vocabulary hashes.
 These fields record the checks performed; they are not a truth certificate.
+
+Version 6 adds deterministic automatic contexts and deduplication within a bound source
+witness. Incompatible duplicates still fail the complete batch, and retained claims pass
+all temporal checks. The [consistency policy](memory-consistency.md) describes comparison
+between saved memories, including the source-licensed preference bridge. Historical
+benchmark reports retain the gate version used when their measurements were taken.
 
 ## Manual submissions and existing data
 

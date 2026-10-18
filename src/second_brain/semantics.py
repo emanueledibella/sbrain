@@ -11,6 +11,7 @@ from owlrl import DeductiveClosure, OWLRL_Semantics
 from pyshacl import validate
 from rdflib import RDF, RDFS, SH, Dataset, Graph, Literal, URIRef
 
+from .consistency import ConflictIndex
 from .models import Claim, Entity, Evidence, instant
 from .vocabulary import PROV, SB, TIME
 
@@ -317,6 +318,9 @@ class Semantics:
             "scope": scope,
         }
 
+        conflicts = ConflictIndex(state, self.vocabulary, claims, valid, known)
+        projection["conflicting_claim_ids"] = {c.id for c in claims if conflicts.conflicts(c)}
+
         selected, warnings = self._eligible(projection)
         projection["warnings"] = warnings
         for (scope_name, context), members in selected.items():
@@ -345,22 +349,11 @@ class Semantics:
 
     def _eligible(self, projection):
         claims = projection["claims"]
-        denied = {
-            (c.context, *self._ground(projection, c))
-            for c in claims
-            if c.epistemic == "explicit" and c.polarity == "negative"
-        }
-        single_values = defaultdict(set)
-        for claim in claims:
-            item = self.vocabulary.property(claim.predicate)
-            if (
-                item
-                and item.get("single_in_context")
-                and claim.epistemic == "explicit"
-                and claim.polarity == "positive"
-            ):
-                s, p, o = self._ground(projection, claim)
-                single_values[(claim.context, s, p)].add(o)
+        # The canonical comparison already handles typed/text-only equivalents,
+        # identity history, cardinality and inverse direction. A second raw RDF
+        # comparison would disagree (e.g. Literal('Bari') versus its entity IRI).
+        # Closure-induced contradictions are still checked after OWL expansion.
+        conflicting = projection["conflicting_claim_ids"]
         grouped, warnings = defaultdict(list), []
         for claim in claims:
             item = self.vocabulary.property(claim.predicate)
@@ -370,7 +363,7 @@ class Semantics:
                 warnings.append(f"Unregistered predicate kept as a qualified claim: {claim.id}")
                 continue
             s, p, o = self._ground(projection, claim)
-            if (claim.context, s, p, o) in denied or len(single_values[(claim.context, s, p)]) > 1:
+            if claim.id in conflicting:
                 warnings.append(f"Conflicting claim excluded from asserted OWL facts: {claim.id}")
                 continue
             if item.get("range") and claim.object_id is None:

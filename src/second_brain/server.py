@@ -27,6 +27,8 @@ Retry a pending saved revision with extract_source, rather than creating another
 When enabled, the persistent worker also retries incomplete extraction, embeddings and projections.
 Inspect memory_status.recovery or recovery_jobs for backlog and needs_review jobs. Use retry_job
 after investigating a repeated failure; never weaken evidence or identity checks to bypass it.
+For a quick durable write with the worker enabled, use remember(background=true), then
+source_status to check adoption. Queued sources are not yet searchable memories.
 For one precise identity, use find_entities then recall with entity_id. A similar search hit
 does not establish identity; broad semantic queries can return other related memories.
 Use knowledge_schema to inspect canonical vocabulary, aliases, signatures and OWL axioms.
@@ -78,12 +80,15 @@ def create_server(engine: MemoryEngine, *, host: str = "127.0.0.1", port: int = 
         source_id: str | None = None,
         request_id: str | None = None,
         extraction: Extraction | None = None,
+        background: bool = False,
     ) -> dict[str, Any]:
         """Save an immutable Markdown source and extract evidence-backed memories locally.
 
         observed_at must include timezone. source_id adds a new source revision.
         Reuse request_id when retrying the same operation. An optional structured extraction
         bypasses chat inference but still undergoes evidence, identity and temporal validation.
+        background=true saves and queues without inference; requires the recovery worker.
+        Poll source_status for completion or needs_review; reuse request_id after any timeout.
         """
         return await to_thread.run_sync(
             partial(
@@ -96,8 +101,14 @@ def create_server(engine: MemoryEngine, *, host: str = "127.0.0.1", port: int = 
                 source_id,
                 request_id,
                 extraction,
+                background,
             )
         )
+
+    @mcp.tool(annotations=read)
+    async def source_status(source_id: str, revision: int | None = None) -> dict[str, Any]:
+        """Inspect adoption and recovery status of a source without running a model."""
+        return await to_thread.run_sync(partial(engine.source_status, source_id, revision))
 
     @mcp.tool(annotations=write)
     @write_access

@@ -20,7 +20,7 @@ def test_status_exposes_active_extraction_policy(engine):
     policy = engine.status()["extraction"]
     assert policy == {
         "model": "local-custom-model",
-        "quality_version": "source-contracts-v6",
+        "quality_version": "source-contracts-v7",
         "verification": "deterministic_source_contracts",
         "context_tokens": engine.settings.model_context,
         "output_tokens": 4096,

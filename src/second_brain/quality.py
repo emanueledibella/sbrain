@@ -13,7 +13,7 @@ from datetime import datetime
 
 from .models import EntityDraft, instant
 
-QUALITY_VERSION = "source-contracts-v6"
+QUALITY_VERSION = "source-contracts-v7"
 
 
 def _canonical(value):
@@ -754,21 +754,45 @@ def source_instants(text):
     return found
 
 
-def validate_source_grounding(draft, text, source):
+def validate_source_grounding(draft, text, source, vocabulary=None):
     """Conservative temporal anchors; unrecognized temporal language is not guessed."""
+    if vocabulary is None:
+        from .vocabulary import vocabulary as load_vocabulary
+
+        vocabulary = load_vocabulary()
     refs = {e.ref: e for e in draft.entities}
+    witnesses = source_witnesses(text, vocabulary)
     for claim in draft.claims:
         if claim.epistemic == "inferred":
             raise ValueError(
                 "Raw extraction cannot introduce inferred claims; use source certainty"
             )
-        # Only evidence/local clauses for this subject may justify a timestamp.
+        # Bind time to this exact fact, including inverse relationships. A person's
+        # other jobs/preferences cannot supply this fact's effective interval.
         subject = refs[claim.subject_ref]
-        clauses = [
-            clause
-            for clause in re.split(r"(?<=[.!?])\s+|\n", text)
-            if _matches(_canonical(clause), _canonical(subject.name))
-        ]
+        prop = vocabulary.property(claim.predicate)
+        start = claim.quote_start
+        if start is None:
+            offsets = [m.start() for m in re.finditer(re.escape(claim.quote), text)]
+            if len(offsets) != 1:
+                raise ValueError("Temporal grounding requires unique evidence")
+            start = offsets[0]
+        matches = []
+        for witness in witnesses:
+            roles = _source_roles(witness, claim.predicate, prop)
+            if (
+                roles
+                and _identity(roles[0]) == _identity(subject.name)
+                and _value_key(roles[1], claim.predicate)
+                == _value_key(claim.value, claim.predicate)
+                and start <= witness.support_start
+                and start + len(claim.quote) >= witness.end
+            ):
+                matches.append(witness)
+        if len(matches) != 1:
+            raise ValueError("Temporal grounding requires one source fact with timestamp support")
+        witness = matches[0]
+        clauses = [text[witness.start:witness.end]]
         if (
             claim.predicate == "deadline"
             and claim.valid_from is not None
@@ -777,7 +801,7 @@ def validate_source_grounding(draft, text, source):
             and not any(re.match(r"^\s*(?:dal|da|from)\s+", clause, re.I) for clause in clauses)
         ):
             raise ValueError("A deadline value is not the effective start of the claim")
-        supported = source_instants(claim.quote + "\n" + "\n".join(clauses))
+        supported = source_instants(clauses[0])
         for name in ("valid_from", "valid_to"):
             value = getattr(claim, name)
             if value is not None and instant(value) not in supported:
@@ -790,7 +814,7 @@ def validate_source_grounding(draft, text, source):
                 clause,
                 re.I,
             )
-            if not interval or not _matches(interval[3], subject.name):
+            if not interval:
                 continue
             start, end = source_instants(interval[1]), source_instants(interval[2])
             if len(start) != 1 or len(end) != 1:

@@ -424,7 +424,10 @@ def test_correct_interval_is_accepted_and_other_subjects_dates_are_not_borrowed(
         "From 1 april 2027 at 10:00 (UTC+02:00) to 1 may 2027 at 10:00 "
         "(UTC+02:00), Nora Bell works for Cedar Labs."
     )
-    item = draft(period, "Nora Bell", valid_from="2027-04-01T08:00Z", valid_to="2027-05-01T08:00Z")
+    item = draft(
+        period, "Nora Bell", predicate="works_for", value="Cedar Labs",
+        valid_from="2027-04-01T08:00Z", valid_to="2027-05-01T08:00Z",
+    )
     validate_source_grounding(item, period, source())
     text = period + " Trip Winter goes to Dublin."
     other = draft(

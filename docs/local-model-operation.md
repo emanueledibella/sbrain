@@ -58,9 +58,18 @@ original provenance and are not automatically re-extracted after a model change.
 `remember` performs extraction synchronously. A rejected draft can trigger one repair
 request, followed by a separate embedding request. The 300-second timeout applies to
 each HTTP request; it is not a 300-second deadline for the complete MCP operation.
-Use a client timeout long enough for the operation (for example, 930 seconds for two
-chat calls and one embedding call), and allow additional time for contention. A timeout
+The TOML configuration generator uses `max(600, ceil(6 * SB_MODEL_TIMEOUT + 120))`
+seconds: 1,920 seconds with the default configuration. This allows a same-source lock
+wait, two chat calls, embedding and overhead. Regenerate the snippet after changing the
+model timeout. The CLI installer uses the same calculated value. Other clients must
+configure their own supported timeout setting. A timeout
 is an inactivity limit enforced by HTTPX; it is not a strict wall-clock execution cap.
+
+For low-latency ingestion, use `remember(background=true, request_id=...)`. With the
+persistent worker enabled, the response acknowledges the durable original and queued job
+without waiting for inference. Poll `source_status(source_id, revision)` for adopted claim
+IDs, retries or `needs_review`. Synchronous ingestion remains the default; queued data is
+not yet searchable. Do not combine background ingestion with a manual extraction.
 
 On a CPU, LFM can take tens of seconds and a repaired extraction can take substantially
 longer. Keep the host awake while using the service. Closing a MacBook lid can suspend
@@ -79,8 +88,9 @@ sleep as the interruption in that incident; it does not guarantee every future r
 will finish within the configured timeout.
 
 When extraction fails or a draft cannot pass validation, the source remains durable and
-the worker retries the saved revision. After the retry budget is exhausted the job enters
-`needs_review`. Inspect `recovery_jobs` and its last error, resolve the underlying issue,
+the worker handles the saved revision. Transient errors receive bounded retries;
+deterministic rejection after the repair attempt goes directly to `needs_review`.
+Inspect `recovery_jobs` and its structured failure, resolve the underlying issue,
 then use `retry_job`; do not submit a new source just to retry extraction. A client timeout
 does not prove the server failed to commit: reuse the same `request_id` and inspect the
 saved source/status before retrying. See [recovery](reliability-and-recovery.md).

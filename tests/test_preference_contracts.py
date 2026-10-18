@@ -289,5 +289,5 @@ def test_retry_and_foreground_race_adopt_saved_mixed_note_only_once(engine, monk
     claims = [engine.explain(i) for i in again["claim_ids"]]
     assert {c["epistemic"] for c in claims} == {"explicit", "proposed"}
     assert all(
-        c["provenance"]["quality_checks"]["version"] == "source-contracts-v6" for c in claims
+        c["provenance"]["quality_checks"]["version"] == "source-contracts-v7" for c in claims
     )

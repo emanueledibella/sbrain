@@ -98,7 +98,12 @@ class ConflictIndex:
         target = (
             ("entity", self.identities[claim.object_id])
             if claim.object_id
-            else ("literal", unicodedata.normalize("NFC", claim.value).strip())
+            else (
+                "literal",
+                _value_key(claim.value, predicate)
+                if predicate in {"deadline", "price"}
+                else unicodedata.normalize("NFC", claim.value).strip(),
+            )
         )
         context = self._context(claim)
         constraints = []

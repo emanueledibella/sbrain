@@ -55,6 +55,11 @@ class JobQueue:
                     PRIMARY KEY(vault_id, worker_id)
                 );
             """)
+            db.execute("BEGIN IMMEDIATE")
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}
+            if "failure" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN failure TEXT")
+            db.execute("COMMIT")
 
     @contextmanager
     def connection(self, *, write=False):
@@ -79,7 +84,7 @@ class JobQueue:
     def identifier(vault_id, work):
         return hashlib.sha256(f"{vault_id}:{work.kind}:{work.target}".encode()).hexdigest()
 
-    def reconcile(self, vault_id: str, work: list[Work]):
+    def reconcile(self, vault_id: str, work: list[Work], *, complete=True):
         """Rebuild obligations from canonical state, preserving retry/review decisions."""
         now, wanted = self.clock(), set()
         with self.connection(write=True) as db:
@@ -92,7 +97,9 @@ class JobQueue:
                 payload = json.dumps(item.payload, sort_keys=True)
                 if previous is None:
                     db.execute(
-                        "INSERT INTO jobs VALUES (?,?,?,?,?,?,'pending',0,?,NULL,NULL,NULL,?,?)",
+                        "INSERT INTO jobs (id,vault_id,kind,target,generation,payload,status,"
+                        "attempts,next_attempt_at,lease_token,lease_until,last_error,created_at,"
+                        "updated_at) VALUES (?,?,?,?,?,?,'pending',0,?,NULL,NULL,NULL,?,?)",
                         (
                             identifier,
                             vault_id,
@@ -117,14 +124,19 @@ class JobQueue:
                         db.execute(
                             "UPDATE jobs SET generation=?, payload=?, status='pending', "
                             "attempts=0, "
-                            "next_attempt_at=?, last_error=NULL, updated_at=? WHERE id=?",
+                            "next_attempt_at=?, last_error=NULL, failure=NULL, "
+                            "updated_at=? WHERE id=?",
                             (item.generation, payload, now, now, identifier),
                         )
             rows = db.execute("SELECT id, status FROM jobs WHERE vault_id=?", (vault_id,))
             for row in rows.fetchall():
-                if row["id"] not in wanted and row["status"] not in {"done", "running"}:
+                if (
+                    complete and row["id"] not in wanted
+                    and row["status"] not in {"done", "running"}
+                ):
                     db.execute(
-                        "UPDATE jobs SET status='done', last_error=NULL, updated_at=? WHERE id=?",
+                        "UPDATE jobs SET status='done', last_error=NULL, failure=NULL, "
+                        "updated_at=? WHERE id=?",
                         (now, row["id"]),
                     )
 
@@ -134,9 +146,10 @@ class JobQueue:
             db.execute(
                 "UPDATE jobs SET status=CASE WHEN attempts>=? THEN 'needs_review' ELSE 'pending' "
                 "END, lease_token=NULL, lease_until=NULL, next_attempt_at=?, "
-                "last_error='lease_expired', updated_at=? "
+                "last_error='lease_expired', failure=?, updated_at=? "
                 "WHERE vault_id=? AND status='running' AND lease_until<=?",
-                (max_attempts, now, now, vault_id, now),
+                (max_attempts, now, json.dumps({"stage": "worker", "code": "lease_expired",
+                                              "retryable": True}), now, vault_id, now),
             )
             row = db.execute(
                 "SELECT * FROM jobs WHERE vault_id=? AND status IN ('pending','retry_wait') "
@@ -165,7 +178,9 @@ class JobQueue:
                 == 1
             )
 
-    def finish(self, job, *, error=None, max_attempts=5, retry_base=30, retry_max=3600):
+    def finish(
+        self, job, *, error=None, failure=None, max_attempts=5, retry_base=30, retry_max=3600
+    ):
         now = self.clock()
         with self.connection(write=True) as db:
             current = db.execute(
@@ -177,9 +192,10 @@ class JobQueue:
                 return False
             attempts, due = current["attempts"], now
             if current["generation"] != job["generation"]:
-                status, attempts, error = "pending", 0, None
+                status, attempts, error, failure = "pending", 0, None, None
             elif error:
-                status = "needs_review" if attempts >= max_attempts else "retry_wait"
+                permanent = failure is not None and not failure["retryable"]
+                status = "needs_review" if permanent or attempts >= max_attempts else "retry_wait"
                 due += min(retry_max, retry_base * 2 ** min(attempts - 1, 20)) * random.uniform(
                     0.8, 1
                 )
@@ -187,8 +203,9 @@ class JobQueue:
                 status = "done"
             db.execute(
                 "UPDATE jobs SET status=?, attempts=?, next_attempt_at=?, lease_token=NULL, "
-                "lease_until=NULL, last_error=?, updated_at=? WHERE id=?",
-                (status, attempts, due, error, now, job["id"]),
+                "lease_until=NULL, last_error=?, failure=?, updated_at=? WHERE id=?",
+                (status, attempts, due, error, json.dumps(failure) if failure else None,
+                 now, job["id"]),
             )
             return True
 
@@ -204,7 +221,7 @@ class JobQueue:
                 raise ValueError("Job is unknown, already running or completed")
             db.execute(
                 "UPDATE jobs SET status='pending', attempts=0, next_attempt_at=?, "
-                "last_error=NULL, updated_at=? WHERE id=?",
+                "last_error=NULL, failure=NULL, updated_at=? WHERE id=?",
                 (now, now, identifier),
             )
         return {"job_id": identifier, "status": "pending"}
@@ -227,14 +244,28 @@ class JobQueue:
         with self.connection() as db:
             rows = db.execute(
                 "SELECT id AS job_id,kind,target,generation,status,attempts,next_attempt_at,"
-                "last_error,created_at,updated_at FROM jobs WHERE vault_id=? "
+                "last_error,failure,created_at,updated_at FROM jobs WHERE vault_id=? "
                 "AND (? IS NULL OR status=?) ORDER BY created_at,id LIMIT ? OFFSET ?",
                 (vault_id, status, status, limit + 1, offset),
             ).fetchall()
         return {
-            "jobs": [dict(row) for row in rows[:limit]],
+            "jobs": [self.describe(row) for row in rows[:limit]],
             "next_offset": offset + limit if len(rows) > limit else None,
         }
+
+    @staticmethod
+    def describe(row):
+        result = dict(row)
+        result["failure"] = json.loads(result["failure"]) if result.get("failure") else None
+        return result
+
+    def get(self, vault_id, identifier):
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT id AS job_id,kind,target,generation,status,attempts,last_error,failure "
+                "FROM jobs WHERE vault_id=? AND id=?", (vault_id, identifier),
+            ).fetchone()
+        return self.describe(row) if row else None
 
     def summary(self, vault_id, *, alive_seconds=60):
         now = self.clock()

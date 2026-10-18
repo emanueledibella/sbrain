@@ -75,7 +75,7 @@ still suppress relationship deductions.
 
 ## Context authority
 
-Under `source-contracts-v6`, automatic extraction uses `context=default`. Current
+Since `source-contracts-v6`, automatic extraction uses `context=default`. Current
 deterministic contracts retain the complete subject, target and qualifiers from each
 source clause, but do not recognize an independent contextual qualifier. A model-chosen
 topic such as `drinks` or `favorites` cannot partition the same fact to avoid conflicts.
@@ -114,3 +114,16 @@ preferences, compatible targets, contexts, incompatible duplicates, source/retry
 integrity, homonyms, approved temporal merges, inverse/symmetric constraints, validity
 boundaries and exclusion of conflicting OWL premises. These tests complement the live
 Ollama, Neo4j and worker recovery tests; they are not a new model-accuracy benchmark.
+
+## Typed literal comparison
+
+Conflict comparison normalizes fully zoned deadlines to the same UTC instant and treats
+an isolated two-place decimal comma/dot as equivalent for prices. Currency, recurrence,
+signs and grouping separators remain significant. For example, `47,25 euro al mese`
+affirmed and `47.25 euro al mese` denied conflict; a yearly price is a different value.
+Equivalent deadline representations do not create false single-value conflicts.
+
+Original claim values and source quotes remain unchanged. OWL asserted literals use the
+same comparison representation, so closure checks do not reintroduce the false conflicts
+that ingestion and recall have eliminated. This does not introduce general string,
+entity, currency-conversion or approximate numeric equivalence.

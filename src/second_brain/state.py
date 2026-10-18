@@ -94,7 +94,10 @@ class State:
             if event.kind == "embeddings":
                 for claim_id, vector in event.metadata["vectors"].items():
                     self.claims[claim_id] = self.claims[claim_id].model_copy(
-                        update={"embedding": vector, "embedding_model": event.metadata["model"]}
+                        update={
+                            "embedding": vector, "embedding_model": event.metadata["model"],
+                            "embedding_profile": event.metadata.get("profile"),
+                        }
                     )
                 for index, version in enumerate(self.versions):
                     vector = event.metadata["vectors"].get(version.claim.id)
@@ -105,6 +108,7 @@ class State:
                                     update={
                                         "embedding": vector,
                                         "embedding_model": event.metadata["model"],
+                                        "embedding_profile": event.metadata.get("profile"),
                                     }
                                 )
                             }

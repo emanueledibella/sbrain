@@ -10,6 +10,7 @@ import time
 
 from filelock import FileLock
 
+from .failures import Failure, RecoveryFailure, classify
 from .jobs import Work
 from .models import uid
 
@@ -27,6 +28,7 @@ class RecoveryWorker:
         self._active_lock = threading.Lock()
 
     def reconcile(self):
+        self.engine.refresh_embedding_profile()
         with self.engine.vault.transaction() as events:
             state = self.engine._state(events)
         desired = []
@@ -37,12 +39,7 @@ class RecoveryWorker:
                 and not state.extraction_cover(source)
             ):
                 desired.append(
-                    Work(
-                        "extraction",
-                        source.key,
-                        source.sha256,
-                        {"source_id": source.source_id, "revision": source.revision},
-                    )
+                    self.engine.extraction_work(source)
                 )
         for claim in state.claims.values():
             if not self.engine.compatible_embedding(claim):
@@ -79,7 +76,7 @@ class RecoveryWorker:
         if job["kind"] == "extraction":
             result = self.engine.extract_source(payload["source_id"], payload["revision"])
             if result["status"] == "stored_pending_extraction":
-                raise RuntimeError("Extraction pending")
+                raise RecoveryFailure(Failure(**result["failure"]))
         elif job["kind"] == "embedding":
             if job["generation"] == self.engine.embedding_profile:
                 self.engine.repair_embedding(payload["claim_id"])
@@ -106,16 +103,18 @@ class RecoveryWorker:
         with self._active_lock:
             self.active = job
         try:
-            error = None
+            error, failure = None, None
             try:
                 self._execute(job)
             except Exception as exc:
                 # Never persist source excerpts, model responses or credentials in diagnostics.
-                error = f"{job['kind']}_failed:{type(exc).__name__}"
+                failure = classify(exc, job["kind"]).dict()
+                error = f"{failure['stage']}:{failure['code']}"
                 logger.warning("Recovery job %s (%s): %s", job["id"], job["kind"], error)
             self.queue.finish(
                 job,
                 error=error,
+                failure=failure,
                 max_attempts=self.settings.worker_max_attempts,
                 retry_base=self.settings.worker_retry_base_seconds,
                 retry_max=self.settings.worker_retry_max_seconds,

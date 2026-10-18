@@ -2,6 +2,7 @@
 
 import json
 import re
+from threading import RLock
 
 from neo4j import GraphDatabase
 
@@ -25,6 +26,7 @@ class Neo4jGraph:
             notifications_min_severity="WARNING",
         )
         self.initialized = False
+        self._projection_lock = RLock()
         # Model identity and dimensions are part of the index identity.
         import hashlib
 
@@ -32,6 +34,16 @@ class Neo4jGraph:
             f"{settings.embedding_model}:{settings.embedding_dimensions}".encode()
         ).hexdigest()[:12]
         self.vector_index = f"sb_vector_{suffix}"
+        self.embedding_profile = None
+
+    def set_embedding_profile(self, profile):
+        if not isinstance(profile, str) or not re.fullmatch(r"[0-9a-f]{64}", profile):
+            raise ValueError("Invalid embedding profile")
+        with self._projection_lock:
+            if profile != self.embedding_profile:
+                self.embedding_profile = profile
+                self.vector_index = f"sb_vector_{profile[:12]}"
+                self.initialized = False
 
     def close(self):
         self.driver.close()
@@ -75,6 +87,10 @@ class Neo4jGraph:
         self.initialized = True
 
     def sync(self, state: State, force: bool = False, current_head=None):
+        with self._projection_lock:
+            return self._sync(state, force, current_head)
+
+    def _sync(self, state: State, force: bool = False, current_head=None):
         if force:
             self.initialized = False
         self.initialize()
@@ -249,11 +265,13 @@ class Neo4jGraph:
                 f"UNWIND $ids AS id MATCH (a:Assertion {{vault_id:$vault, claim_id:id}}) "
                 f"REMOVE a:{self.vector_index} WITH a "
                 "WHERE a.embedding_model=$model AND size(a.embedding)=$dimensions "
+                "AND a.embedding_profile=$profile "
                 f"SET a:{self.vector_index}",
                 ids=list(claim_ids),
                 vault=self.vault_id,
                 model=self.settings.embedding_model,
                 dimensions=self.settings.embedding_dimensions,
+                profile=self.embedding_profile,
             ).consume()
             tx.run(
                 "MATCH (m:MemoryMeta {vault_id:$vault, id:'head'}) "
@@ -280,7 +298,8 @@ class Neo4jGraph:
             "head": state.head,
             "seq": len(state.events),
             "vocabulary": self.vocabulary.digest,
-            "embedding_profile": self.vector_index,
+            "embedding_profile": self.vector_index if self.embedding_profile else
+                rows[0]["embedding_profile"],
         }
 
     def search(
@@ -294,7 +313,10 @@ class Neo4jGraph:
         known_at=None,
         include_uncertain: bool = False,
         claim_ids: list[str] | None = None,
+        embedding_profile: str | None = None,
     ) -> dict[str, float]:
+        if embedding_profile is not None and not re.fullmatch(r"[0-9a-f]{64}", embedding_profile):
+            raise ValueError("Invalid embedding profile")
         valid = instant(valid_at).isoformat()
         known = instant(known_at).isoformat()
 
@@ -337,9 +359,12 @@ class Neo4jGraph:
             rows = self.query(
                 "CALL db.index.vector.queryNodes($index, $limit, $vector) "
                 "YIELD node, score WHERE node.vault_id=$vault AND score >= 0.675 "
+                "AND node.embedding_profile=$profile "
                 "AND ($scope IS NULL OR node.scope=$scope) AND " + visible("node") + " "
                 "RETURN node.claim_id AS id, score ORDER BY score DESC",
-                index=self.vector_index,
+                index=f"sb_vector_{embedding_profile[:12]}" if embedding_profile else
+                    self.vector_index,
+                profile=embedding_profile or self.embedding_profile,
                 limit=limit,
                 vector=vector,
                 vault=self.vault_id,

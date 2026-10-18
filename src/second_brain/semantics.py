@@ -13,6 +13,7 @@ from rdflib import RDF, RDFS, SH, Dataset, Graph, Literal, URIRef
 
 from .consistency import ConflictIndex
 from .models import Claim, Entity, Evidence, instant
+from .quality import _value_key
 from .vocabulary import PROV, SB, TIME
 
 
@@ -213,8 +214,11 @@ class Semantics:
             messages = "; ".join(f"{i['path']}: {i['message']}" for i in report["issues"][:3])
             raise ValueError("SHACL validation failed: " + messages)
 
-    def project(self, state, vault, valid, known, scope=None, include_uncertain=True):
-        claims = state.visible(valid, known, scope, include_uncertain)
+    def project(self, state, vault, valid, known, scope=None, include_uncertain=True, context=None):
+        visible = state.visible(valid, known, scope, include_uncertain)
+        claims = visible
+        if context is not None:
+            claims = [c for c in claims if c.context == context]
         if len(claims) > self.max_claims:
             raise ValueError(
                 f"Semantic snapshot exceeds {self.max_claims} claims; select a smaller scope"
@@ -225,7 +229,7 @@ class Semantics:
         ontology_graph = dataset.graph(self.iri(vault, "graph", "vocabulary"))
         ontology_graph += self.ontology
         identity = hashlib.sha256(
-            f"{state.head}:{valid.isoformat()}:{known.isoformat()}:{scope}".encode()
+            f"{state.head}:{valid.isoformat()}:{known.isoformat()}:{scope}:{context}".encode()
         ).hexdigest()
         snapshot = self.iri(vault, "snapshot", identity)
         metadata = dataset.graph(self.iri(vault, "graph", "snapshot"))
@@ -318,7 +322,7 @@ class Semantics:
             "scope": scope,
         }
 
-        conflicts = ConflictIndex(state, self.vocabulary, claims, valid, known)
+        conflicts = ConflictIndex(state, self.vocabulary, visible, valid, known)
         projection["conflicting_claim_ids"] = {c.id for c in claims if conflicts.conflicts(c)}
 
         selected, warnings = self._eligible(projection)
@@ -333,7 +337,10 @@ class Semantics:
         return (
             projection["entities"][claim.subject_id],
             self.vocabulary.property_iri(claim.predicate),
-            projection["entities"][claim.object_id] if claim.object_id else Literal(claim.value),
+            projection["entities"][claim.object_id] if claim.object_id else Literal(
+                _value_key(claim.value, claim.predicate)
+                if claim.predicate in {"deadline", "price"} else claim.value
+            ),
         )
 
     def _is_class(self, graph, node, expected):
@@ -398,11 +405,7 @@ class Semantics:
             facts, proofs = Graph(), {}
             entity_nodes = projection["entities"]
             for claim in selected:
-                triple = (
-                    entity_nodes[claim.subject_id],
-                    self.vocabulary.property_iri(claim.predicate),
-                    entity_nodes[claim.object_id] if claim.object_id else Literal(claim.value),
-                )
+                triple = self._ground(projection, claim)
                 facts.add(triple)
                 proofs[triple] = Proof(claims=frozenset({claim.id}))
             # Immutable entity classifications can be used independently of positive claims.

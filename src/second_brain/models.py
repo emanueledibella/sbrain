@@ -118,6 +118,7 @@ class Claim(Record):
     evidence: list[Evidence]
     embedding: list[float] = Field(default_factory=list)
     embedding_model: str | None = None
+    embedding_profile: str | None = None
     provenance: dict = Field(default_factory=dict)
 
     @model_validator(mode="after")

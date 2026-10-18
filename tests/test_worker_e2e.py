@@ -357,9 +357,17 @@ class RecoveryScenario:
 
             async def completed():
                 rows = (await self.call(session, "recovery_jobs", {}))["jobs"]
-                return rows if len(rows) == 3 and all(j["status"] == "done" for j in rows) else None
+                return (
+                    rows if {j["kind"] for j in rows} == {"extraction", "embedding", "projection"}
+                    and all(j["status"] == "done" for j in rows) else None
+                )
 
             done = await self.wait(completed)
+            # Resolving a previously unavailable model digest can create a new vector
+            # profile obligation; the obsolete job remains as completed audit history.
+            assert sum(j["kind"] == "extraction" for j in done) == 1
+            assert sum(j["kind"] == "projection" for j in done) == 1
+            assert len({(j["kind"], j["target"]) for j in done}) == len(done)
             final = self.snapshot()
             assert final["sources"] == 2 and final["claims"] >= 2 and final["missing"] == 0
             assert final["claim_ids"] == committed_state["claim_ids"]

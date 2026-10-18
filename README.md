@@ -130,6 +130,20 @@ on success, `2` for warnings or incomplete processing, and `1` for errors.
 `stored_pending_extraction` means the text is saved, but the engine has not adopted an
 extraction. `indexed` indicates successful indexing.
 
+For a quick durable write without waiting for local inference, call MCP `remember` with
+`background: true` and a stable `request_id`. Compose's persistent worker processes the
+saved revision; the response returns `queued`, `source_id`, `revision` and `job_id`.
+Poll the read-only `source_status` tool with that source ID and revision to inspect
+adoption, retry details or `needs_review`. Queued originals are readable through
+`read_source` but are not searchable claims yet. Background ingestion requires an enabled
+queue and cannot be combined with a supplied structured extraction. The synchronous
+default remains compatible with existing clients.
+
+Generated TOML client configurations derive their tool timeout from `SB_MODEL_TIMEOUT`
+(1,920 seconds at the default 300 seconds per model request). Regenerate them with
+`python scripts/mcp_config.py` after changing that setting. Prefer background writes
+when you need a short response. See [local model operation](docs/local-model-operation.md).
+
 Retry a pending revision through the MCP `extract_source` tool with its `source_id` and
 `revision`, or use the CLI `extract` command. This reuses the saved original and does not
 create another revision. An optional reviewed `extraction` can complete it without Ollama.

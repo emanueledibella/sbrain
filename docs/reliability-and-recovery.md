@@ -8,8 +8,10 @@ skill. Original sources and the event ledger remain authoritative; SQLite tracks
 
 ## Automatic recovery flow
 
-`remember` still saves an original before making model calls and attempts extraction in
-the foreground. At startup and approximately every 15 seconds between jobs, the worker reconciles the
+By default, `remember` saves an original before making model calls and attempts extraction in
+the foreground. With `background=true`, it saves the source and queues the same revision
+without invoking Ollama or Neo4j; `source_status` reports eventual adoption and job status.
+At startup and approximately every 15 seconds between jobs, the worker reconciles the
 canonical ledger with the queue. It discovers unprocessed source revisions, claims with
 missing/incompatible embeddings, and stale Neo4j or generated Markdown projections.
 
@@ -41,7 +43,7 @@ processes that same revision. It does not claim that background work is already 
 | Kind | Work identity | Operation |
 | --- | --- | --- |
 | `extraction` | Vault and source revision | Call the existing validated `extract_source` path |
-| `embedding` | Vault, claim and configured model/dimensions profile | Repair that claim's vector without re-extracting or changing its status |
+| `embedding` | Vault, claim and digest-based vector profile | Repair that claim's vector without re-extracting or changing its status |
 | `projection` | One coalesced views job per vault | Synchronize Neo4j and materialize Markdown from current canonical state |
 
 Jobs have stable IDs, generation identifiers, attempt counts, due times, lease tokens,
@@ -61,14 +63,27 @@ JSON-validation repair within an extraction attempt. Transport errors skip that 
 repair loop but still receive worker retries.
 
 Retry delays grow exponentially from 30 seconds up to 3,600 seconds, with 0.8–1.0 jitter.
-Transient dependency outages and repeated validation errors are bounded by the same job
-attempt limit. A long outage can therefore reach `needs_review`; after fixing it, an owner
+Transient dependency outages use this bounded retry budget. An extraction that still
+fails deterministic validation after the extractor's repair attempt goes directly to
+`needs_review`, avoiding repeated expensive inference on the same rejected batch.
+A long outage can also reach `needs_review`; after fixing it, an owner
 explicitly resets that job. The queue does not retry review jobs indefinitely.
 
 Unchanged reconciliation scans preserve retry delays and review states. If the canonical
 work has been completed manually or superseded, reconciliation resolves the corresponding
 non-running job. A genuinely new projection generation reopens work for the newer state.
 That is separate from a timed retry of the unchanged generation.
+An extraction generation includes the source hash, configured model, quality-gate version,
+vocabulary and shapes, so a relevant software/configuration change can reopen pending
+extraction. Adopted claims are never automatically re-extracted after such a change.
+
+Job inspection includes a safe `failure` object with `stage`, `code` and `retryable`.
+Examples include `dependency_timeout`, `dependency_unavailable`, `dependency_http_503`,
+`source_contract_rejected`, `identity_rejected`, `temporal_rejected` and `shacl_rejected`.
+`last_error` remains a short stage/code string. No exception message or source text is
+stored in these diagnostics. Old SQLite databases migrate in place without losing jobs.
+Existing retry/review decisions survive unchanged generations; `retry_job` clears the
+diagnostic and resets the retry budget after investigation.
 
 ## Restart, concurrency and crash safety
 
@@ -80,7 +95,7 @@ package is required. Keep the directory on local storage, rather than a network 
 The one-shot `queue-init` service applies private directory/file permissions and the
 configured container UID/GID. MCP and the worker run without root privileges. Source
 text, embedding vectors, model responses and raw exception messages are not stored in
-the queue. Error codes identify the failing stage and exception class.
+the queue. Error codes identify the failing stage, reason and whether retry can help.
 
 Each claimed job gets a fenced lease. A heartbeat thread renews the active lease while
 slow model or database work runs. A killed process cannot renew it; a new worker can reclaim

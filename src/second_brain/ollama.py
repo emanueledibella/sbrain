@@ -7,6 +7,8 @@ from contextvars import ContextVar
 import httpx
 
 from .config import Settings
+from .embeddings import profile_id
+from .failures import Failure, RecoveryFailure, ValidationRejected
 from .models import Entity, Extraction, SourceRevision
 from .quality import (
     QUALITY_VERSION,
@@ -147,24 +149,34 @@ class Ollama:
             response = self._post("/api/chat", body)
             _response_model.set(response.get("model", self.settings.chat_model))
             content = response["message"]["content"]
+            phase = "schema"
             try:
                 draft = self.vocabulary.normalize(Extraction.model_validate_json(content))
+                phase = "identity_evidence"
                 draft, repairs = ground_draft(draft, text, entities, source.scope)
                 draft, declarations = complete_subject_refs(
                     draft, text, self.vocabulary, entities, source.scope
                 )
                 repairs.extend(declarations)
+                phase = "evidence"
                 validate_extraction(draft, text, observed_at=source.observed_at)
+                phase = "identity"
                 validate_entity_references(draft, entities, source.scope)
+                phase = "shacl"
                 self.semantics.validate_draft(draft, source, entities)
+                phase = "source_contract"
                 draft, bindings = bind_source_contracts(
                     draft, text, self.vocabulary, entities, source.scope
                 )
                 repairs.extend(bindings)
+                phase = "evidence"
                 validate_extraction(draft, text, observed_at=source.observed_at)
+                phase = "identity"
                 validate_entity_references(draft, entities, source.scope)
+                phase = "shacl"
                 self.semantics.validate_draft(draft, source, entities)
-                validate_source_grounding(draft, text, source)
+                phase = "temporal"
+                validate_source_grounding(draft, text, source, self.vocabulary)
                 _response_quality.set(
                     {
                         "version": QUALITY_VERSION,
@@ -177,7 +189,9 @@ class Ollama:
                 return draft
             except ValueError as exc:
                 if attempt == 1:
-                    raise
+                    raise ValidationRejected(
+                        Failure("extraction", f"{phase}_rejected", False), str(exc)
+                    ) from exc
                 # Start repair from the original source, not the rejected JSON.
                 # Small models can copy a wrong subject or malformed key from their
                 # previous answer even when deterministic feedback rejects it.
@@ -227,6 +241,15 @@ class Ollama:
             ):
                 raise ValueError("Invalid embedding or dimensions differ from configuration")
         return vectors
+
+    def embedding_identity(self):
+        status = self.status()
+        model = self.settings.embedding_model
+        name = model if ":" in model else model + ":latest"
+        digest = status.get("model_digests", {}).get(name)
+        if not isinstance(digest, str) or not digest.strip():
+            raise RecoveryFailure(Failure("embedding", "model_identity_unavailable", True))
+        return profile_id(model, self.settings.embedding_dimensions, digest)
 
     def provenance(self) -> dict:
         result = {

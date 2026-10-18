@@ -62,8 +62,10 @@ including explicitly approved merges applicable to the snapshot.
 ## 3. Embed the question
 
 The engine asks Ollama's embedding endpoint to represent the question with the configured
-embedding model. A claim vector is compared only when its model identifier and dimensions
-match the query configuration.
+embedding model. A claim vector is compared only when its model identifier, dimensions
+and digest-based vector profile match the query. The profile includes the actual Ollama
+weight digest and embedding-pipeline version. A mutable tag alone cannot establish
+compatibility. See [vector profiles and migration](vector-profiles.md).
 
 The model places semantically related texts near each other in vector space. Cosine
 similarity measures their alignment. This comparison helps find memories that do not use
@@ -161,7 +163,7 @@ text. A candidate is included when it has a lexical match, cosine similarity of 
 The canonical lexical pass case-folds text, extracts words with Python's `\w+` regular
 expression and compares sets of distinct words. This step does not perform stemming,
 stop-word removal or synonym expansion. Exact cosine is calculated only for matching
-model IDs and vector dimensions. Candidates are sorted by descending combined score,
+model IDs, vector dimensions and vector profiles. Candidates are sorted by descending combined score,
 then by claim ID for ties.
 
 The exact canonical pass scans the visible candidate set. Its work grows with the number

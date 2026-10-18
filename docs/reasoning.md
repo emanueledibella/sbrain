@@ -142,9 +142,9 @@ declared premises; they are not independent verification of real-world truth. A 
 correction, retraction or different snapshot changes the next computation.
 
 Requests are bounded: the default semantic snapshot limit is 250 visible claims, and there
-are also proof/closure and context budgets. A context filter narrows reasoning, but the
-scope's snapshot is constructed before that filter; it does not bypass the snapshot claim
-limit. Oversized requests fail explicitly instead of silently dropping required premises.
+are also proof/closure and context budgets. A context filter is applied before RDF
+construction and the claim-count check; unrelated contexts do not consume that budget.
+Oversized selected snapshots fail explicitly instead of silently dropping required premises.
 
 ## Related tools and examples
 
@@ -166,3 +166,12 @@ docker compose exec -T mcp second-brain reason --scope demo --context attendance
 
 For vocabulary coverage, extension configuration and RDF formats, see the
 [knowledge reference](knowledge.md).
+
+## Context selection and semantic limits
+
+When `reason_memory` receives a context, the engine filters the temporal claim snapshot
+before building RDF, verifying selected evidence, applying the claim-count limit and
+running SHACL. Unrelated contexts therefore do not consume the selected context's claim
+budget. Conflict comparison still respects canonical context/identity policies, including
+legacy automatic labels that cannot hide a contradictory claim. Scope, temporal and
+triple-budget checks remain enforced.

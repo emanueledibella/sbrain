@@ -183,7 +183,7 @@ start uses `observed_at`; the existing bitemporal ledger and corrections remain
 unchanged. These bounded rules do not implement general temporal language parsing.
 
 Accepted provenance includes `extractor_version`, `quality_checks.version`
-(`source-contracts-v6` for current automatic extractions), normalized draft digest,
+(`source-contracts-v7` for current automatic extractions), normalized draft digest,
 mechanical normalization details,
 verification method, bound claim count and the model/prompt/schema/vocabulary hashes.
 These fields record the checks performed; they are not a truth certificate.
@@ -193,6 +193,13 @@ witness. Incompatible duplicates still fail the complete batch, and retained cla
 all temporal checks. The [consistency policy](memory-consistency.md) describes comparison
 between saved memories, including the source-licensed preference bridge. Historical
 benchmark reports retain the gate version used when their measurements were taken.
+
+Version 7 binds temporal support to the exact source witness selected by subject,
+predicate, target and evidence span, including inverse relations. An interval on one
+fact cannot date another fact about the same subject, even when both are quoted in a
+single excerpt. Different facts about one person may have independent intervals. An
+undated fact keeps `observed_at` as its initial validity; existing claims retain their
+original provenance and are not silently rewritten.
 
 ## Manual submissions and existing data
 
@@ -207,7 +214,7 @@ the old object link. Same-target aliases, polarity changes and legacy descriptiv
 participation values preserve the link;
 provenance records detachments. See [change operations](temporal-memory-and-corrections.md#explicit-change-operations).
 
-No new API, model, runtime dependency, database or Compose service is required.
+No additional model, runtime dependency, database or Compose service is required.
 The configured production model and its token/resource settings remain unchanged.
 Building/recreating the app containers is required to activate new source code in
 an existing Docker installation.

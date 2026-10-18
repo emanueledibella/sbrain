@@ -11,8 +11,10 @@ from rdflib import Graph
 
 from .config import Settings
 from .consistency import ConflictIndex
+from .embeddings import EmbeddingBatch, profile_id
+from .failures import Failure, RecoveryFailure, classify
 from .graph import Neo4jGraph
-from .jobs import JobQueue
+from .jobs import JobQueue, Work
 from .models import (
     Change,
     Claim,
@@ -57,6 +59,11 @@ class MemoryEngine:
         self._cache_lock = RLock()
         self._view_lock = FileLock(self.vault.meta / "views.lock", timeout=240, mode=0o600)
         self._queue = None
+        self._embedding_profile = (
+            None if hasattr(self.models, "embedding_identity") else
+            profile_id(self.settings.embedding_model, self.settings.embedding_dimensions,
+                       "unversioned-adapter")
+        )
 
     def close(self):
         if self.graph:
@@ -80,6 +87,8 @@ class MemoryEngine:
         if self.graph is None:
             return ["Neo4j disabled; using canonical lexical retrieval"]
         try:
+            if self._embedding_profile and hasattr(self.graph, "set_embedding_profile"):
+                self.graph.set_embedding_profile(self._embedding_profile)
             if force:
                 self.graph.sync(state, force=True, current_head=self._ledger_head)
             else:
@@ -92,12 +101,16 @@ class MemoryEngine:
         with self.vault.transaction() as events:
             return events[-1].hash if events else "empty"
 
-    def _vectors(self, texts: list[str]) -> tuple[list[list[float]], list[str]]:
+    def _vectors(self, texts: list[str]) -> EmbeddingBatch:
         if not texts:
-            return [], []
+            return EmbeddingBatch()
         if self.models is None:
-            return [], ["Local models disabled; semantic search unavailable"]
+            return EmbeddingBatch(
+                warnings=["Local models disabled; semantic search unavailable"],
+                failure=Failure("embedding", "models_disabled", True),
+            )
         try:
+            profile = self._resolve_embedding_profile()
             vectors = []
             for start in range(0, len(texts), 32):
                 batch = self.models.embed(texts[start : start + 32])
@@ -111,9 +124,15 @@ class MemoryEngine:
                     ):
                         raise ValueError("Invalid embedding vector")
                 vectors.extend(batch)
-            return vectors, []
+            if profile != self._resolve_embedding_profile():
+                raise RecoveryFailure(Failure("embedding", "model_changed_during_embedding", True))
+            self._embedding_profile = profile
+            return EmbeddingBatch(vectors=vectors, profile=profile)
         except Exception as exc:
-            return [], [warning("Embedding unavailable", exc)]
+            self._embedding_profile = None
+            return EmbeddingBatch(
+                warnings=[warning("Embedding unavailable", exc)], failure=classify(exc, "embedding")
+            )
 
     def remember(
         self,
@@ -125,7 +144,12 @@ class MemoryEngine:
         source_id: str | None = None,
         request_id: str | None = None,
         extraction: Extraction | dict | None = None,
+        background: bool = False,
     ) -> dict:
+        if background and (extraction is not None or self.settings.worker_queue_path is None):
+            raise ValueError(
+                "Background ingestion requires a recovery queue and no manual extraction"
+            )
         if not text.strip() or len(text) > self.settings.max_source_chars:
             raise ValueError(f"Source must contain 1–{self.settings.max_source_chars} characters")
         if not scope.strip() or len(scope) > 200 or not title.strip() or len(title) > 300:
@@ -169,7 +193,63 @@ class MemoryEngine:
                     sources=[source],
                 )
         # Source is durable before any call to a model or graph database.
+        if background:
+            with self.vault.transaction() as events:
+                state = self._state(events)
+            if source.key in state.extracted or state.extraction_cover(source):
+                return self.source_status(source.source_id, source.revision)
+            work = self.extraction_work(source)
+            try:
+                self.job_queue().reconcile(self.vault.id, [work], complete=False)
+                job_id = JobQueue.identifier(self.vault.id, work)
+                job = self.job_queue().get(self.vault.id, job_id)
+            except Exception:
+                return {
+                    "source_id": source.source_id, "revision": source.revision,
+                    "status": "stored_pending_extraction", "claim_ids": [],
+                    "failure": Failure("queue", "queue_unavailable", True).dict(),
+                    "warnings": ["Source saved; worker reconciliation will restore its job"],
+                }
+            if job and job["status"] in {"needs_review", "done"}:
+                return self.source_status(source.source_id, source.revision)
+            return {
+                "source_id": source.source_id, "revision": source.revision,
+                "status": "queued", "claim_ids": [],
+                "job_id": job_id, "warnings": [],
+            }
         return self.extract_source(source.source_id, source.revision, extraction=extraction)
+
+    def extraction_work(self, source):
+        generation = hashlib.sha256(
+            f"{source.sha256}:{self.settings.chat_model}:{QUALITY_VERSION}:"
+            f"{self.vocabulary.digest}:{self.semantics.shapes_digest}".encode()
+        ).hexdigest()
+        return Work("extraction", source.key, generation,
+                    {"source_id": source.source_id, "revision": source.revision})
+
+    def source_status(self, source_id, revision=None):
+        with self.vault.transaction() as events:
+            state = self._state(events)
+            source = self._source(state, source_id, revision)
+            covered = state.extraction_cover(source)
+        # Verify originals even when reporting only the indexing status.
+        self.vault.read(source)
+        if source.key in state.extracted or covered:
+            result = self._ingest_result(state, covered or source, [])
+            if covered:
+                result.update(status="superseded", revision=source.revision,
+                              indexed_revision=covered.revision, superseded_by=covered.key)
+            return result
+        job = None
+        if self.settings.worker_queue_path is not None:
+            work = self.extraction_work(source)
+            job = self.job_queue().get(self.vault.id, JobQueue.identifier(self.vault.id, work))
+        return {
+            "source_id": source.source_id, "revision": source.revision,
+            "status": "needs_review" if job and job["status"] == "needs_review" else
+                "stored_pending_extraction",
+            "claim_ids": [], "job": job,
+        }
 
     def extract_source(
         self,
@@ -204,14 +284,14 @@ class MemoryEngine:
             try:
                 if extraction is None:
                     if self.models is None:
-                        raise RuntimeError(
-                            "Ollama disabled; provide an explicit extraction or retry later"
+                        raise RecoveryFailure(
+                            Failure("extraction", "models_disabled", True)
                         )
                     draft = self.models.extract(text, source, known_entities)
                     provenance = {
                         "origin": "local_model",
                         "model": self.settings.chat_model,
-                        "extractor_version": 10,
+                        "extractor_version": 11,
                     }
                     if hasattr(self.models, "provenance"):
                         provenance.update(self.models.provenance())
@@ -226,13 +306,15 @@ class MemoryEngine:
                 )
                 validate_entity_references(draft, known_entities, source.scope)
                 self.semantics.validate_draft(draft, source, known_entities)
-                vectors, embed_warnings = self._vectors([c.statement for c in draft.claims])
-                warnings.extend(embed_warnings)
+                batch = self._vectors([c.statement for c in draft.claims])
+                warnings.extend(batch.warnings)
                 with self.vault.transaction() as events:
                     state = self._state(events)
                     covered = state.extraction_cover(source)
                     if source.key not in state.extracted and not covered:
-                        entities, claims = self._adopt(draft, source, text, state, vectors)
+                        entities, claims = self._adopt(
+                            draft, source, text, state, batch.vectors, batch.profile
+                        )
                         for claim in claims:
                             claim.provenance = {**provenance, "source_sha256": source.sha256}
                         self.vault.append(
@@ -265,6 +347,7 @@ class MemoryEngine:
                         "status": "stored_pending_extraction",
                         "claim_ids": [],
                         "warnings": warnings,
+                        "failure": classify(exc, "extraction").dict(),
                     }
         warnings.extend(self._sync(state))
         warnings.extend(self._materialize(state))
@@ -300,6 +383,7 @@ class MemoryEngine:
         text: str,
         state: State,
         vectors: list[list[float]],
+        embedding_profile: str | None = None,
     ) -> tuple[list[Entity], list[Claim]]:
         # Recheck against the latest state under the writer lock after inference.
         validate_entity_references(
@@ -350,6 +434,7 @@ class MemoryEngine:
                 ],
                 embedding=vectors[index] if vectors else [],
                 embedding_model=self.settings.embedding_model if vectors else None,
+                embedding_profile=embedding_profile if vectors else None,
             )
             # Repeated identical facts within one extraction are harmless and deduplicated.
             if not any(
@@ -474,7 +559,8 @@ class MemoryEngine:
                 "replacement_id": duplicate_change.replacement_id,
                 "warnings": warnings,
             }
-        vectors, vector_warnings = self._vectors([statement]) if kind != "retraction" else ([], [])
+        batch = self._vectors([statement]) if kind != "retraction" else EmbeddingBatch()
+        vectors = batch.vectors
         declaration = statement or "Memory retraction: " + claim_id
         text = f"# {kind}\n\n{declaration}\n\nReason: {reason}\n"
         # Embeddings are prepared before the commit lock; immutable source is saved at commit.
@@ -484,7 +570,7 @@ class MemoryEngine:
         replacements = []
         warnings = []
         if kind != "retraction":
-            warnings.extend(vector_warnings)
+            warnings.extend(batch.warnings)
             start = text.index(statement)
             replacement_object_id = target.object_id
             if target.object_id:
@@ -532,6 +618,7 @@ class MemoryEngine:
                     ],
                     embedding=vectors[0] if vectors else [],
                     embedding_model=self.settings.embedding_model if vectors else None,
+                    embedding_profile=batch.profile if vectors else None,
                 )
             ]
         change = Change(
@@ -768,7 +855,8 @@ class MemoryEngine:
                 for c in candidates
                 if identity in {identities[c.subject_id], identities.get(c.object_id)}
             ]
-        vectors, warnings = self._vectors([query])
+        batch = self._vectors([query])
+        vectors, warnings = batch.vectors, batch.warnings
         warnings.extend(self._sync(state))
         graph_scores = {}
         if self.graph is not None and not any(w.startswith("Neo4j projection") for w in warnings):
@@ -781,6 +869,7 @@ class MemoryEngine:
                     known_at=known,
                     include_uncertain=include_uncertain,
                     claim_ids=[c.id for c in candidates] if entity_id is not None else None,
+                    embedding_profile=batch.profile,
                 )
             except Exception as exc:
                 warnings.append(warning("Neo4j search unavailable", exc))
@@ -817,6 +906,7 @@ class MemoryEngine:
             if (
                 vectors
                 and claim.embedding_model == self.settings.embedding_model
+                and claim.embedding_profile == batch.profile
                 and len(claim.embedding) == len(vectors[0])
             ):
                 a, b = claim.embedding, vectors[0]
@@ -981,7 +1071,8 @@ class MemoryEngine:
         with self.vault.transaction() as events:
             state = self._state(events)
             claims = list(state.claims.values())
-        vectors, warnings = self._vectors([c.statement for c in claims])
+        batch = self._vectors([c.statement for c in claims])
+        vectors, warnings = batch.vectors, batch.warnings
         if warnings:
             return {"updated": 0, "warnings": warnings}
         if not claims:
@@ -995,6 +1086,7 @@ class MemoryEngine:
                 recorded_at=instant(self.clock()),
                 metadata={
                     "model": self.settings.embedding_model,
+                    "profile": batch.profile,
                     "vectors": {c.id: v for c, v in zip(claims, vectors, strict=True)},
                 },
             )
@@ -1004,13 +1096,32 @@ class MemoryEngine:
 
     @property
     def embedding_profile(self):
-        return hashlib.sha256(
-            f"{self.settings.embedding_model}:{self.settings.embedding_dimensions}".encode()
-        ).hexdigest()
+        return self._embedding_profile or profile_id(
+            self.settings.embedding_model, self.settings.embedding_dimensions, "unresolved"
+        )
+
+    def _resolve_embedding_profile(self):
+        if hasattr(self.models, "embedding_identity"):
+            return self.models.embedding_identity()
+        # Injected providers must expose embedding_identity for mutable model weights.
+        return profile_id(
+            self.settings.embedding_model, self.settings.embedding_dimensions,
+            "unversioned-adapter",
+        )
+
+    def refresh_embedding_profile(self):
+        try:
+            self._embedding_profile = self._resolve_embedding_profile()
+        except Exception:
+            self._embedding_profile = None
+        if self._embedding_profile and hasattr(self.graph, "set_embedding_profile"):
+            self.graph.set_embedding_profile(self._embedding_profile)
 
     def compatible_embedding(self, claim):
         return (
             claim.embedding_model == self.settings.embedding_model
+            and self._embedding_profile is not None
+            and claim.embedding_profile == self._embedding_profile
             and len(claim.embedding) == self.settings.embedding_dimensions
             and all(math.isfinite(x) for x in claim.embedding)
             and any(claim.embedding)
@@ -1018,15 +1129,16 @@ class MemoryEngine:
 
     def repair_embedding(self, claim_id):
         """Repair one claim without re-extracting or changing any memory version/status."""
+        self.refresh_embedding_profile()
         with self.vault.transaction() as events:
             state = self._state(events)
             claim = state.claims[canonical_id(claim_id)]
             if self.compatible_embedding(claim):
                 return
         self._verify_evidence(state, claim)
-        vectors, warnings = self._vectors([claim.statement])
-        if warnings:
-            raise RuntimeError("Embedding unavailable")
+        batch = self._vectors([claim.statement])
+        if batch.failure:
+            raise RecoveryFailure(batch.failure)
         with self.vault.transaction() as events:
             state = self._state(events)
             if self.compatible_embedding(state.claims[claim.id]):
@@ -1038,7 +1150,8 @@ class MemoryEngine:
                 recorded_at=instant(self.clock()),
                 metadata={
                     "model": self.settings.embedding_model,
-                    "vectors": {claim.id: vectors[0]},
+                    "profile": batch.profile,
+                    "vectors": {claim.id: batch.vectors[0]},
                 },
             )
 
@@ -1135,6 +1248,7 @@ class MemoryEngine:
             )
 
     def status(self) -> dict:
+        self.refresh_embedding_profile()
         with self.vault.transaction() as events:
             state = self._state(events)
             superseded = {
@@ -1168,6 +1282,7 @@ class MemoryEngine:
                 "embeddings_incompatible": sum(
                     not self.compatible_embedding(c) for c in state.claims.values()
                 ),
+                "embedding_profile": self._embedding_profile,
                 "extraction": {
                     "model": self.settings.chat_model,
                     "quality_version": QUALITY_VERSION,
@@ -1209,7 +1324,9 @@ class MemoryEngine:
     def knowledge_schema(self, query="", kind="all", limit=20, offset=0):
         return self.vocabulary.describe(query, kind, limit, offset)
 
-    def _semantic_snapshot(self, scope, valid_at=None, known_at=None, include_uncertain=True):
+    def _semantic_snapshot(
+        self, scope, valid_at=None, known_at=None, include_uncertain=True, context=None
+    ):
         if scope is not None and (not scope.strip() or len(scope) > 200):
             raise ValueError("Invalid semantic scope")
         with self.vault.transaction() as events:
@@ -1217,7 +1334,7 @@ class MemoryEngine:
         at = instant(self.clock())
         valid, known = instant(valid_at, at), instant(known_at, at)
         projection = self.semantics.project(
-            state, self.vault.id, valid, known, scope, include_uncertain
+            state, self.vault.id, valid, known, scope, include_uncertain, context=context
         )
         cache = _source_cache.set({})
         try:
@@ -1270,9 +1387,7 @@ class MemoryEngine:
     def reason_memory(self, scope, valid_at=None, known_at=None, context=None, limit=30):
         if not scope or not 1 <= limit <= 100 or (context is not None and len(context) > 200):
             raise ValueError("Reasoning requires a scope, valid context and limit 1–100")
-        state, projection = self._semantic_snapshot(scope, valid_at, known_at)
-        if context is not None:
-            projection["claims"] = [c for c in projection["claims"] if c.context == context]
+        state, projection = self._semantic_snapshot(scope, valid_at, known_at, context=context)
         report = self.semantics.check(projection["graph"])
         if report["issue_count"] > len(report["issues"]):
             raise ValueError("Too many SHACL violations for safe reasoning; select a smaller scope")

@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import math
 import os
 import re
 import secrets
@@ -26,6 +27,19 @@ def write_private(path: Path, text: str):
         temp.unlink(missing_ok=True)
 
 
+def client_timeout(root: Path):
+    values = {}
+    for line in (root / ".env").read_text().splitlines():
+        key, separator, raw = line.partition("=")
+        if separator and key.strip() == "SB_MODEL_TIMEOUT":
+            values[key.strip()] = shlex.split(raw, comments=True)[0]
+    timeout = float(os.getenv("SB_MODEL_TIMEOUT", values.get("SB_MODEL_TIMEOUT", "300")))
+    if not math.isfinite(timeout) or not 0 < timeout <= 600:
+        raise ValueError("SB_MODEL_TIMEOUT must be greater than 0 and at most 600")
+    # One same-source lock wait, two chat requests, embedding and protocol overhead.
+    return max(600, math.ceil(6 * timeout + 120))
+
+
 def generate(root: Path, read_only: bool = False):
     values = {}
     for line in (root / ".env").read_text().splitlines():
@@ -46,7 +60,7 @@ def generate(root: Path, read_only: bool = False):
     output.chmod(0o700)
     snippet = (
         f"[mcp_servers.second_brain]\nurl = {json.dumps(url)}\n"
-        "tool_timeout_sec = 600\n"
+        f"tool_timeout_sec = {client_timeout(root)}\n"
         f"http_headers = {{ Authorization = {json.dumps(headers['Authorization'])} }}\n"
     )
     write_private(output / f"mcp.{role}.toml", snippet)
@@ -59,7 +73,7 @@ def generate(root: Path, read_only: bool = False):
     return url, headers
 
 
-def install_codex(path: Path, url: str, headers: dict):
+def install_codex(path: Path, url: str, headers: dict, timeout_seconds=1920):
     original = path.read_text() if path.exists() else ""
     parsed = tomllib.loads(original)
     servers = parsed.get("mcp_servers", {})
@@ -75,7 +89,7 @@ def install_codex(path: Path, url: str, headers: dict):
     settings = {
         **existing,
         "url": url,
-        "tool_timeout_sec": 600,
+        "tool_timeout_sec": timeout_seconds,
         "http_headers": {**existing.get("http_headers", {}), **headers},
     }
     settings.pop("bearer_token_env_var", None)
@@ -109,4 +123,4 @@ if __name__ == "__main__":
     project = Path(__file__).resolve().parent.parent
     url, headers = generate(project, args.read_only)
     if args.install_codex:
-        install_codex(Path.home() / ".codex" / "config.toml", url, headers)
+        install_codex(Path.home() / ".codex" / "config.toml", url, headers, client_timeout(project))

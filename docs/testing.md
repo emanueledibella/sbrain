@@ -2,6 +2,14 @@
 
 [Documentation index](README.md)
 
+[`test_review_regressions.py`](../tests/test_review_regressions.py) covers independent
+temporal intervals for facts about the same subject, rejection of borrowed dates,
+deadline/price comparisons across representations, context filtering before semantic
+limits, digest changes and vector repair, model swaps during embedding, background
+ingestion/restart/idempotency, safe worker diagnostics, SQLite migration and generated
+client timeouts. These tests use temporary vaults and deterministic model boundaries;
+the full suite also verifies the real Ollama/Neo4j integration and worker restart scenarios.
+
 The full pytest suite also includes deterministic extraction regressions in
 [`test_quality.py`](../tests/test_quality.py). These use held-out names and wording
 to check complete identities, exact evidence, relation direction, polarity, certainty,

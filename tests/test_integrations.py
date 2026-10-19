@@ -17,7 +17,11 @@ from .conftest import LocalVectors, extraction
 @pytest.mark.integration
 def test_live_neo4j_projection_relations_search_and_temporal_replay(live_graph_engine, clock):
     engine = live_graph_engine
-    result = engine.remember("The trip goes to Palermo.", extraction=extraction())
+    result = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     assert not result["warnings"], result
     clock.set("2026-10-14T10:00:00Z")
     changed = engine.change(
@@ -55,7 +59,11 @@ def test_live_neo4j_projection_relations_search_and_temporal_replay(live_graph_e
 @pytest.mark.integration
 def test_live_neo4j_projection_rolls_back_on_failure(live_graph_engine):
     engine = live_graph_engine
-    engine.remember("The trip goes to Palermo.", extraction=extraction())
+    engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     with engine.vault.transaction() as events:
         state = State(events)
     # A nested object is not a legal Neo4j property; error after DELETE must roll it back.
@@ -73,16 +81,21 @@ def test_live_neo4j_projection_rolls_back_on_failure(live_graph_engine):
 @pytest.mark.integration
 def test_live_neo4j_separate_vault_is_not_deleted(live_graph_engine, tmp_path):
     engine = live_graph_engine
-    engine.remember("The trip goes to Palermo.", extraction=extraction())
+    engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     other = MemoryEngine(
         engine.settings.model_copy(update={"vault_path": tmp_path / "other"}),
         models=LocalVectors(),
         clock=engine.clock,
     )
     try:
-        result = other.remember(
+        result = other.remember_reviewed(
             "The trip goes to Catania.",
             extraction=extraction("The trip goes to Catania.", value="Catania"),
+            review_reason="Reviewed regression fixture",
         )
         assert not result["warnings"]
         engine.replay()
@@ -126,6 +139,41 @@ def test_live_ollama_structured_extraction_and_embeddings(tmp_path):
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Marta Riva lavora per Officina Cedro?", False),
+        ("Marta Riva partecipa alla Riunione Levante?", False),
+        ("Marta Riva lavora per Officina Cedro.", True),
+    ],
+)
+def test_live_italian_speech_acts_through_adoption_recall_and_owl(tmp_path, text, expected):
+    """Use actual local inference, not simulated JSON or an AI correctness judge."""
+    if os.getenv("SB_TEST_OLLAMA") != "1":
+        pytest.skip("Set SB_TEST_OLLAMA=1 to exercise actual local inference")
+    engine = MemoryEngine(Settings(vault_path=tmp_path / "italian-safety"), graph=None)
+    try:
+        result = engine.remember(text, scope="isolated-speech-act-test", request_id="speech-act")
+        assert bool(result["claim_ids"]) == expected, result
+        assert engine.read_source(result["source_id"])["text"] == text
+        memories = engine.recall("Marta Riva", scope="isolated-speech-act-test")["memories"]
+        assert bool(memories) == expected, memories
+        deductions = engine.reason_memory("isolated-speech-act-test")["deductions"]
+        if expected:
+            assert any(d["predicate"].endswith("employs") for d in deductions)
+            assert all(c["predicate"] == "works_for" for c in memories)
+        else:
+            assert not deductions
+        again = engine.remember(text, scope="isolated-speech-act-test", request_id="speech-act")
+        assert again["source_id"] == result["source_id"]
+        assert again["claim_ids"] == result["claim_ids"]
+        with engine.vault.transaction() as events:
+            assert len(State(events).sources) == 1
+    finally:
+        engine.close()
+
+
+@pytest.mark.integration
 def test_live_engine_end_to_end(tmp_path):
     if os.getenv("SB_TEST_NEO4J") != "1" or os.getenv("SB_TEST_OLLAMA") != "1":
         pytest.skip("Set SB_TEST_NEO4J=1 and SB_TEST_OLLAMA=1 for complete local path")
@@ -166,7 +214,7 @@ def test_live_engine_end_to_end(tmp_path):
 def test_live_graph_expands_context_through_object(live_graph_engine):
     engine = live_graph_engine
     note = "Marco will join. The destination is Palermo."
-    result = engine.remember(
+    result = engine.remember_reviewed(
         note,
         extraction={
             "entities": [
@@ -191,6 +239,7 @@ def test_live_graph_expands_context_through_object(live_graph_engine):
                 },
             ],
         },
+        review_reason="Reviewed regression fixture",
     )
     assert not result["warnings"]
     # No vector and no "Marco" in the destination: result must use ABOUT/OBJECT expansion.

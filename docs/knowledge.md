@@ -97,8 +97,8 @@ Registered entity-to-entity relations check their expected classes. Subclasses a
 
 The profile is open: an unknown precise predicate or entity kind remains usable through a
 stable extension IRI. It receives structural validation, but no invented ontology rules.
-This describes storage, manual submissions and historical data. Automatic local-model
-adoption additionally requires registered relation/type signatures and a deterministic
+This describes storage, owner-attested CLI imports and historical data. Ordinary local-model
+and structured MCP adoption additionally require registered relation/type signatures and a deterministic
 source contract; unknown terms or unsupported wording remain pending. Registered
 extension keys support explicit controlled-language triples; new natural-language
 paraphrases need tested contracts. See [extraction quality](extraction-quality.md).

@@ -157,7 +157,11 @@ def test_failed_extraction_reaches_review_and_recovers_after_explicit_retry(reco
 
 def test_worker_repairs_vectors_without_reextracting_or_resurrecting_claims(recovery_engine):
     engine = recovery_engine
-    saved = engine.remember("The trip goes to Palermo.", extraction=extraction())
+    saved = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     engine.change(saved["claim_ids"][0], kind="retraction", reason="Incorrect")
     engine.models = LocalVectors()
     worker = RecoveryWorker(engine)
@@ -198,7 +202,11 @@ def test_foreground_and_worker_share_source_lock(recovery_engine):
 
 def test_projection_retry_after_dependency_recovers(recovery_engine):
     engine = recovery_engine
-    engine.remember("The trip goes to Palermo.", extraction=extraction())
+    engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     engine.models = LocalVectors()
 
     class Graph:
@@ -229,7 +237,11 @@ def test_projection_retry_after_dependency_recovers(recovery_engine):
 
 def test_process_death_after_embedding_commit_does_not_duplicate_ledger(recovery_engine):
     engine = recovery_engine
-    saved = engine.remember("The trip goes to Palermo.", extraction=extraction())
+    saved = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     RecoveryWorker(engine).reconcile()
     # Exit without acknowledging the durable embedding event. A new process must recover.
     script = """

@@ -100,6 +100,7 @@ saved source/status before retrying. See [recovery](reliability-and-recovery.md)
 The deployed model makes proposals; deterministic source contracts, identity/evidence
 checks, temporal validation and SHACL decide whether the engine adopts them. LFM does
 not bypass these checks. Unsupported or ambiguous language can still remain pending.
-`explicit` records what a source says, not independently verified truth. Reviewed
-structured submissions have their distinct manual/agent provenance and do not claim to
+`explicit` records what a source says, not independently verified truth. Ordinary
+structured submissions pass the same source contracts. Explicit owner-reviewed CLI imports
+have separate `owner_reviewed` provenance and do not claim to
 have passed the automatic language contracts. See [extraction quality](extraction-quality.md).

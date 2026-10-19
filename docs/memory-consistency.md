@@ -35,7 +35,7 @@ The rules are:
   `single_in_context`. Two preferences or two participations can be compatible.
 - Two denials of different targets do not create a single-value conflict.
 - Proposed and inferred claims do not conflict as explicit declarations.
-- Nonoverlapping intervals, different scopes and authoritative manual contexts remain
+- Nonoverlapping intervals, different scopes and authoritative owner-reviewed import contexts remain
   separate. Current and historical queries use the same comparison rules.
 - Typed targets are compared through canonical IDs, including approved temporal merges.
   Their readable values do not replace object identity. Inverse and symmetric properties
@@ -82,8 +82,9 @@ topic such as `drinks` or `favorites` cannot partition the same fact to avoid co
 The proposed label is retained in normalization provenance.
 
 If a statement requires a distinction not expressible by the current source contracts,
-keep it for review or submit an explicitly reviewed structured extraction. Explicit
-manual contexts are preserved, including contexts inherited by corrections.
+keep it for review or use a separate owner-attested CLI import. Ordinary structured MCP
+submissions cannot set authoritative contexts by bypassing source checks. Owner-reviewed
+import contexts are preserved, including contexts inherited by corrections.
 
 Older automatic labels remain in the immutable ledger and returned claim records.
 Conflict comparison treats their labels as `default`, following correction ancestry

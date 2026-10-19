@@ -50,7 +50,7 @@ def test_opposite_preference_forms_report_the_same_conflict(engine, automatic, f
     a = automatic(predicate=first, context="favorite-drinks")
     text = f"Nora Bell non preferisce {TARGET}."
     b = automatic(text, predicate=second, polarity="negative", context="beverages")
-    assert a["claim_ids"] and b["claim_ids"]
+    assert a["claim_ids"] and b["claim_ids"], (a["warnings"], b["warnings"])
     assert b["conflicts"] == [{"claim_id": b["claim_ids"][0], "other_id": a["claim_ids"][0]}]
     rows = memories(engine)
     assert {r["predicate"] for r in rows} == {first, second}
@@ -132,13 +132,20 @@ def test_deduplication_preserves_distinct_source_occurrences_and_sources(engine,
 
 
 def test_manually_provided_contexts_are_preserved(engine):
-    first = engine.remember(TEXT, scope="test", extraction=proposal(context="at-home"))
+    first = engine.remember_reviewed(
+        TEXT,
+        scope="test",
+        extraction=proposal(context="at-home"),
+        review_reason="Reviewed regression fixture",
+    )
     claim = engine.explain(first["claim_ids"][0])
     text = f"Nora Bell non preferisce {TARGET}."
     data = proposal(text, polarity="negative", context="at-work")
     data["entities"][0]["existing_id"] = claim["subject_id"]
     data["entities"][1]["existing_id"] = claim["object_id"]
-    second = engine.remember(text, scope="test", extraction=data)
+    second = engine.remember_reviewed(
+        text, scope="test", extraction=data, review_reason="Reviewed regression fixture"
+    )
     assert not second["conflicts"]
     assert {r["context"] for r in memories(engine)} == {"at-home", "at-work"}
 
@@ -153,6 +160,9 @@ def test_legacy_model_context_and_its_correction_do_not_hide_conflicts(
             "extract",
             lambda *args: Extraction.model_validate(proposal(context="model-chosen-label")),
         )
+        # Simulate the legacy engine boundary too: new engines recheck adapter
+        # output independently, even if an adapter forgets source contracts.
+        patch.setattr("second_brain.engine.bind_source_contracts", lambda d, *a: (d, []))
         result = automatic()
     original = engine.explain(result["claim_ids"][0])
     assert original["context"] == "model-chosen-label"
@@ -241,7 +251,9 @@ def test_ambiguous_literal_target_is_not_matched_to_one_of_two_homonyms(engine):
     text = f"Nora Bell non preferisce {TARGET}."
     data = proposal(text, predicate="preference", polarity="negative")
     data["entities"][0]["existing_id"] = claim["subject_id"]
-    result = engine.remember(text, scope="test", extraction=data)
+    result = engine.remember_reviewed(
+        text, scope="test", extraction=data, review_reason="Reviewed regression fixture"
+    )
     assert not result["conflicts"]
 
 
@@ -496,8 +508,11 @@ def test_expired_legacy_targets_do_not_make_a_current_denial_ambiguous(engine):
         if typed:
             entities.append({"ref": "target", "name": target, "kind": "event"})
             claim["object_ref"] = "target"
-        return engine.remember(
-            text, scope="test", extraction={"entities": entities, "claims": [claim]}
+        return engine.remember_reviewed(
+            text,
+            scope="test",
+            extraction={"entities": entities, "claims": [claim]},
+            review_reason="Reviewed regression fixture",
         )
 
     old = participation(
@@ -531,12 +546,13 @@ def test_compatible_legacy_text_does_not_exclude_a_valid_typed_owl_premise(engin
     )
     original = engine.explain(typed["claim_ids"][0])
     text = "The trip goes to Bari."
-    literal = engine.remember(
+    literal = engine.remember_reviewed(
         text,
         scope="test",
         extraction=extraction(
             text, value="Bari", existing_id=original["subject_id"], context="default"
         ),
+        review_reason="Reviewed regression fixture",
     )
     assert not literal["conflicts"]
     result = engine.reason_memory("test")

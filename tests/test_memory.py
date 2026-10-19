@@ -18,7 +18,12 @@ def values(result):
 def test_original_evidence_and_revision_survive_edits(engine, memory):
     source_id = memory["source_id"]
     edited = "The trip goes to Catania."
-    engine.remember(edited, source_id=source_id, extraction=extraction(edited, value="Catania"))
+    engine.remember_reviewed(
+        edited,
+        source_id=source_id,
+        extraction=extraction(edited, value="Catania"),
+        review_reason="Reviewed regression fixture",
+    )
     assert engine.read_source(source_id, 1)["text"] == "The trip goes to Palermo."
     assert engine.read_source(source_id, 2)["text"] == edited
     evidence = engine.explain(memory["claim_ids"][0])["evidence"][0]
@@ -67,11 +72,12 @@ def test_real_update_preserves_past_and_half_open_boundary(engine, memory, clock
 
 def test_scoped_correction_does_not_change_other_contexts(engine, memory, clock):
     entity_id = engine.explain(memory["claim_ids"][0])["subject_id"]
-    other = engine.remember(
+    other = engine.remember_reviewed(
         "The museum will be in Palermo.",
         extraction=extraction(
             "The museum will be in Palermo.", existing_id=entity_id, context="museum"
         ),
+        review_reason="Reviewed regression fixture",
     )
     clock.set("2026-10-13T10:00:00Z")
     engine.change(
@@ -96,9 +102,10 @@ def test_retraction_is_historical_and_not_physical_deletion(engine, memory, cloc
 
 
 def test_uncertain_claims_excluded_by_default(engine):
-    engine.remember(
+    engine.remember_reviewed(
         "We might go to Palermo.",
         extraction=extraction("We might go to Palermo.", epistemic="proposed"),
+        review_reason="Reviewed regression fixture",
     )
     assert not engine.recall("Palermo")["memories"]
     assert values(engine.recall("Palermo", include_uncertain=True)) == {"Palermo"}
@@ -106,9 +113,10 @@ def test_uncertain_claims_excluded_by_default(engine):
 
 def test_conflicts_not_silently_overwritten(engine, memory):
     entity_id = engine.explain(memory["claim_ids"][0])["subject_id"]
-    new = engine.remember(
+    new = engine.remember_reviewed(
         "The trip goes to Catania.",
         extraction=extraction("The trip goes to Catania.", value="Catania", existing_id=entity_id),
+        review_reason="Reviewed regression fixture",
     )
     assert new["conflicts"]
     result = engine.recall("trip")
@@ -118,38 +126,64 @@ def test_conflicts_not_silently_overwritten(engine, memory):
 
 def test_homonyms_and_scopes_do_not_merge(engine, memory):
     entity_id = engine.explain(memory["claim_ids"][0])["subject_id"]
-    other = engine.remember("The trip goes to Palermo.", scope="work", extraction=extraction())
+    other = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        scope="work",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     assert engine.explain(other["claim_ids"][0])["subject_id"] != entity_id
-    bad = engine.remember(
-        "The trip goes to Palermo.", scope="work", extraction=extraction(existing_id=entity_id)
+    bad = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        scope="work",
+        extraction=extraction(existing_id=entity_id),
+        review_reason="Reviewed regression fixture",
     )
     assert bad["status"] == "stored_pending_extraction"
     assert len(engine.recall("trip", scope="personal")["memories"]) == 1
 
 
 def test_bad_quote_rejects_whole_extraction_but_preserves_source(engine):
-    result = engine.remember("The trip goes to Palermo.", extraction=extraction("Does not exist."))
+    result = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction("Does not exist."),
+        review_reason="Reviewed regression fixture",
+    )
     assert result["status"] == "stored_pending_extraction"
     assert engine.status()["claims"] == 0
     assert engine.read_source(result["source_id"])["text"] == "The trip goes to Palermo."
-    retried = engine.extract_source(result["source_id"], extraction=extraction())
+    retried = engine.extract_source_reviewed(
+        result["source_id"], extraction=extraction(), review_reason="Reviewed regression fixture"
+    )
     assert len(retried["claim_ids"]) == 1
     assert not engine.status()["pending_extraction"]
 
 
 def test_repeated_quote_requires_an_offset(engine):
     draft = extraction("Palermo")
-    result = engine.remember("Palermo and Palermo", extraction=draft)
+    result = engine.remember_reviewed(
+        "Palermo and Palermo", extraction=draft, review_reason="Reviewed regression fixture"
+    )
     assert result["status"] == "stored_pending_extraction"
     draft["claims"][0]["quote_start"] = 12
-    adopted = engine.extract_source(result["source_id"], extraction=draft)
+    adopted = engine.extract_source_reviewed(
+        result["source_id"], extraction=draft, review_reason="Reviewed regression fixture"
+    )
     assert engine.explain(adopted["claim_ids"][0])["evidence"][0]["start"] == 12
 
 
 def test_request_retries_are_idempotent_and_payload_checked(engine):
-    first = engine.remember("The trip goes to Palermo.", request_id="same", extraction=extraction())
-    second = engine.remember(
-        "The trip goes to Palermo.", request_id="same", extraction=extraction()
+    first = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        request_id="same",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
+    second = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        request_id="same",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
     )
     assert first["claim_ids"] == second["claim_ids"]
     assert engine.status()["events"] == 2
@@ -171,8 +205,11 @@ def test_request_retries_are_idempotent_and_payload_checked(engine):
 
 def test_concurrent_retries_commit_once(engine):
     def write(_):
-        return engine.remember(
-            "The trip goes to Palermo.", request_id="concurrent", extraction=extraction()
+        return engine.remember_reviewed(
+            "The trip goes to Palermo.",
+            request_id="concurrent",
+            extraction=extraction(),
+            review_reason="Reviewed regression fixture",
         )
 
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -222,7 +259,11 @@ def test_graph_outage_leaves_canonical_data_replayable(engine):
             raise ConnectionError("offline")
 
     engine.graph = Broken()
-    result = engine.remember("The trip goes to Palermo.", extraction=extraction())
+    result = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     assert result["claim_ids"]
     assert any("projection pending" in w for w in result["warnings"])
     engine.graph = None
@@ -245,7 +286,11 @@ def test_temporal_input_requires_timezone_and_intervals_are_valid(engine, memory
     draft = extraction()
     draft["claims"][0].update(valid_from="2026-10-12T10:00:00Z", valid_to="2026-10-11T10:00:00Z")
     assert (
-        engine.remember("The trip goes to Palermo.", extraction=draft)["status"]
+        engine.remember_reviewed(
+            "The trip goes to Palermo.",
+            extraction=draft,
+            review_reason="Reviewed regression fixture",
+        )["status"]
         == "stored_pending_extraction"
     )
 
@@ -262,7 +307,7 @@ def test_budget_keeps_whole_evidence_and_reports_truncation(engine, memory):
 
 def test_entity_object_relationship(engine):
     text = "Marco is joining the trip."
-    result = engine.remember(
+    result = engine.remember_reviewed(
         text,
         extraction={
             "entities": [
@@ -280,6 +325,7 @@ def test_entity_object_relationship(engine):
                 }
             ],
         },
+        review_reason="Reviewed regression fixture",
     )
     explanation = engine.explain(result["claim_ids"][0])
     assert explanation["subject"]["name"] == "Marco"
@@ -314,7 +360,11 @@ def test_derived_view_failure_does_not_misreport_commit(engine, monkeypatch):
         raise OSError("disk unavailable for derived profiles")
 
     monkeypatch.setattr(engine, "_profiles", fail)
-    result = engine.remember("The trip goes to Palermo.", extraction=extraction())
+    result = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     assert result["status"] == "stored_with_warnings"
     assert result["claim_ids"]
     assert not engine.status()["pending_extraction"]
@@ -330,11 +380,12 @@ def test_derived_view_failure_does_not_misreport_commit(engine, monkeypatch):
 
 
 def test_english_demo_coexists_with_earlier_memories_and_can_be_retried(engine):
-    earlier = engine.remember(
+    earlier = engine.remember_reviewed(
         "The trip goes to Palermo.",
         scope="demo",
         request_id="demo-source-v1",
         extraction=extraction(),
+        review_reason="Reviewed regression fixture",
     )
     result = run_demo(engine)
     expected = {

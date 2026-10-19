@@ -74,7 +74,7 @@ records `object_link_change=detached_changed_value` and `previous_object_id` in 
 
 These operations do not accept a new object entity ID and do not guess a replacement
 identity. The replacement remains a readable literal assertion, compatible with the
-manual-change contract. Register a reviewed structured assertion through `remember`
+manual-change contract. Register an owner-attested structured assertion through the offline CLI
 when a new explicit entity link is required. Existing ledger entries are not rewritten.
 
 The extraction-and-SHACL pipeline applies to `remember` and `extract_source`. Explicit

@@ -51,7 +51,9 @@ def test_local_extractor_repairs_borrowed_identity_without_merging_similar_event
     engine, monkeypatch
 ):
     a_text, a = trip_draft("Gita Test MCP 20261013-A")
-    saved_a = engine.remember(a_text, scope="test-mcp", extraction=a)
+    saved_a = engine.remember_reviewed(
+        a_text, scope="test-mcp", extraction=a, review_reason="Reviewed regression fixture"
+    )
     a_id = engine.explain(saved_a["claim_ids"][0])["subject_id"]
     b_text, bad = trip_draft("Gita Test MCP 20261013-B", existing_id=a_id)
     _, repaired = trip_draft("Gita Test MCP 20261013-B")
@@ -67,7 +69,9 @@ def test_local_extractor_repairs_borrowed_identity_without_merging_similar_event
 
 def test_offered_alias_can_reuse_approved_identity(engine, monkeypatch):
     text, draft = trip_draft("Gita di ottobre")
-    saved = engine.remember(text, scope="test-mcp", extraction=draft)
+    saved = engine.remember_reviewed(
+        text, scope="test-mcp", extraction=draft, review_reason="Reviewed regression fixture"
+    )
     entity_id = engine.explain(saved["claim_ids"][0])["subject_id"]
     engine.identity_change(entity_id, kind="alias", alias="Gita autunnale", reason="Same event")
     alias_text, alias_draft = trip_draft("Gita autunnale", "Genova", entity_id)
@@ -90,8 +94,11 @@ def test_local_identity_repair_failure_keeps_original_pending(engine, monkeypatc
 
 def test_indexed_identical_revision_covers_pending_without_reviving_corrected_facts(engine):
     pending = engine.remember("The trip goes to Palermo.")
-    indexed = engine.remember(
-        "The trip goes to Palermo.", source_id=pending["source_id"], extraction=extraction()
+    indexed = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        source_id=pending["source_id"],
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
     )
     engine.change(
         indexed["claim_ids"][0],
@@ -104,7 +111,12 @@ def test_indexed_identical_revision_covers_pending_without_reviving_corrected_fa
     old_key, new_key = f"{pending['source_id']}:1", f"{pending['source_id']}:2"
     assert old_key not in before["pending_extraction"]
     assert before["superseded_extraction"] == {old_key: new_key}
-    retry = engine.extract_source(pending["source_id"], revision=1, extraction=extraction())
+    retry = engine.extract_source_reviewed(
+        pending["source_id"],
+        revision=1,
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     assert retry["status"] == "superseded"
     assert retry["indexed_revision"] == 2
     assert retry["claim_ids"] == indexed["claim_ids"]
@@ -122,7 +134,12 @@ def test_indexed_identical_revision_covers_pending_without_reviving_corrected_fa
 def test_failed_inference_does_not_report_pending_after_another_writer_completed_revision(engine):
     class CompletingModel:
         def extract(self, text, source, entities):
-            engine.remember(text, source_id=source.source_id, extraction=extraction())
+            engine.remember_reviewed(
+                text,
+                source_id=source.source_id,
+                extraction=extraction(),
+                review_reason="Reviewed regression fixture",
+            )
             # The first extraction fails after the second writer has indexed revision 2.
             return Extraction.model_validate(extraction("Unsupported quote"))
 
@@ -142,12 +159,13 @@ def test_failed_inference_does_not_report_pending_after_another_writer_completed
 def test_distinct_revision_does_not_hide_unprocessed_information(engine, change):
     pending = engine.remember("The trip goes to Palermo.")
     text = "The trip goes to Catania." if change == "text" else "The trip goes to Palermo."
-    engine.remember(
+    engine.remember_reviewed(
         text,
         source_id=pending["source_id"],
         extraction=extraction(text),
         observed_at="2026-10-11T10:00:00Z" if change == "observation" else None,
         title="Different title" if change == "title" else "Note",
+        review_reason="Reviewed regression fixture",
     )
     assert engine.status()["pending_extraction"] == [f"{pending['source_id']}:1"]
     assert not engine.status()["superseded_extraction"]
@@ -156,8 +174,12 @@ def test_distinct_revision_does_not_hide_unprocessed_information(engine, change)
 def test_entity_filter_isolates_similar_events_and_includes_object_links(engine):
     a_text, a = trip_draft("Gita A", "Torino")
     b_text, b = trip_draft("Gita B", "Genova")
-    saved_a = engine.remember(a_text, extraction=a)
-    saved_b = engine.remember(b_text, extraction=b)
+    saved_a = engine.remember_reviewed(
+        a_text, extraction=a, review_reason="Reviewed regression fixture"
+    )
+    saved_b = engine.remember_reviewed(
+        b_text, extraction=b, review_reason="Reviewed regression fixture"
+    )
     b_id = engine.explain(saved_b["claim_ids"][0])["subject_id"]
     assert len(engine.recall("gita")["memories"]) == 2
     assert {c["id"] for c in engine.recall("gita", entity_id=b_id)["memories"]} == set(
@@ -179,7 +201,11 @@ def test_entity_filter_isolates_similar_events_and_includes_object_links(engine)
             }
         ],
     }
-    saved_relation = engine.remember("Lia partecipa alla Gita B.", extraction=relation)
+    saved_relation = engine.remember_reviewed(
+        "Lia partecipa alla Gita B.",
+        extraction=relation,
+        review_reason="Reviewed regression fixture",
+    )
     memories = engine.recall("gita", entity_id=b_id, scope="personal")["memories"]
     assert {c["id"] for c in memories} == set(saved_b["claim_ids"] + saved_relation["claim_ids"])
     assert saved_a["claim_ids"][0] not in {c["id"] for c in memories}
@@ -191,10 +217,14 @@ def test_entity_filter_isolates_similar_events_and_includes_object_links(engine)
 
 def test_entity_filter_respects_temporal_merges(engine, clock):
     text, draft = trip_draft("Gita")
-    one = engine.remember(text, extraction=draft)
+    one = engine.remember_reviewed(
+        text, extraction=draft, review_reason="Reviewed regression fixture"
+    )
     first = engine.explain(one["claim_ids"][0])["subject_id"]
     clock.set("2026-10-12T11:00:00Z")
-    two = engine.remember(text, extraction=draft)
+    two = engine.remember_reviewed(
+        text, extraction=draft, review_reason="Reviewed regression fixture"
+    )
     second = engine.explain(two["claim_ids"][0])["subject_id"]
     before_merge = clock().isoformat()
     clock.set("2026-10-12T12:00:00Z")
@@ -246,7 +276,11 @@ def test_live_graph_filters_seeds_and_neighbors(live_graph_engine):
     results = []
     for name in ("Gita A", "Gita B"):
         text, draft = trip_draft(name)
-        results.append(engine.remember(text, extraction=draft))
+        results.append(
+            engine.remember_reviewed(
+                text, extraction=draft, review_reason="Reviewed regression fixture"
+            )
+        )
     b = results[1]
     b_id = engine.explain(b["claim_ids"][0])["subject_id"]
     assert not engine.recall("gita", entity_id=b_id)["warnings"]
@@ -261,7 +295,9 @@ def test_live_ollama_does_not_borrow_test_a_id(tmp_path):
         pytest.skip("Set SB_TEST_OLLAMA=1 to run against local Ollama")
     engine = MemoryEngine(Settings(vault_path=tmp_path / "live-identities"), graph=None)
     a_text, a = trip_draft("Gita Test MCP 20261013-A")
-    a_result = engine.remember(a_text, scope="test-mcp", extraction=a)
+    a_result = engine.remember_reviewed(
+        a_text, scope="test-mcp", extraction=a, review_reason="Reviewed regression fixture"
+    )
     a_id = engine.explain(a_result["claim_ids"][0])["subject_id"]
     b_name = "Gita Test MCP 20261013-B"
     b_text, _ = trip_draft(b_name)

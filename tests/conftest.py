@@ -59,7 +59,11 @@ def extraction(
 
 @pytest.fixture
 def memory(engine):
-    return engine.remember("The trip goes to Palermo.", extraction=extraction())
+    return engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed storage fixture",
+    )
 
 
 class LocalVectors:

@@ -165,8 +165,12 @@ work. Inspect backlog/review state and dependency status separately. Outside Com
 
 Inspect a failed source with `read_source`, check identity/SHACL issues or restore a missing
 dependency. The source remains saved and validation is not weakened to make a job pass.
-Use a reviewed structured `extract_source` input if the local model cannot resolve it.
-Once manual extraction succeeds, reconciliation observes the completion.
+A supplied structured `extract_source` interpretation passes all the normal source
+contracts. Unsupported logic or ambiguous identity stays in `needs_review`. An owner can
+extend a tested contract or explicitly attest an offline CLI import with
+`--extraction FILE --owner-review-reason REASON`; the agent must not use owner review as
+an automatic fallback. Successful indexing is observed by reconciliation. See
+[semantic safety](semantic-safety.md) for the trust boundary and recovery example.
 
 To retry a job, replace `JOB_ID` with the ID returned by `jobs` or `recovery_jobs`:
 

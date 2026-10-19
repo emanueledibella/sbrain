@@ -1,5 +1,13 @@
 # Automated worker recovery tests
 
+The semantic-safety regressions in `tests/test_semantic_safety.py` cover questions versus
+assertions, structured MCP source grounding, temporal roles, canonical homonyms, minimum
+entity classifications and retraction of OWL type support. They include actual stdio and
+authenticated HTTP tools plus persistent worker `needs_review` after restart. Real Ollama
+integration tests also run the original Italian question counterexamples and a declarative
+control through ingestion, recall, reasoning and idempotent retries. All vaults are
+synthetic and disposable; see [semantic safety](semantic-safety.md).
+
 [Documentation index](README.md)
 
 [`test_review_regressions.py`](../tests/test_review_regressions.py) covers independent

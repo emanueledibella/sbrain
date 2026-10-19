@@ -82,6 +82,12 @@ def parser() -> argparse.ArgumentParser:
     refresh.add_argument("source_id")
     refresh.add_argument("--observed-at")
     refresh.add_argument("--extraction", type=Path)
+    for operation in (rem, ext, refresh):
+        operation.add_argument(
+            "--owner-review-reason",
+            help="Owner attestation for a reviewed import; requires --extraction. "
+            "Bypasses deterministic language contracts, never exposed over MCP",
+        )
     rec = sub.add_parser("recall")
     rec.add_argument("query")
     rec.add_argument("--scope")
@@ -168,6 +174,10 @@ def main():
 
 def dispatch(args, engine: MemoryEngine):
     command = args.command
+    review_reason = getattr(args, "owner_review_reason", None)
+    if review_reason is not None and not getattr(args, "extraction", None):
+        raise ValueError("--owner-review-reason requires --extraction")
+    reviewed = {"review_reason": review_reason} if review_reason is not None else {}
     if command == "init":
         return {
             "vault": str(engine.vault.root),
@@ -215,7 +225,8 @@ def dispatch(args, engine: MemoryEngine):
         )
         return function(args.scope, args.valid_at, args.known_at, **extra)
     if command == "remember":
-        return engine.remember(
+        remember = engine.remember_reviewed if reviewed else engine.remember
+        return remember(
             args.file.read_text(),
             args.title,
             args.scope,
@@ -224,15 +235,16 @@ def dispatch(args, engine: MemoryEngine):
             args.source_id,
             args.request_id,
             load_extraction(args.extraction),
+            **reviewed,
         )
     if command == "extract":
-        return engine.extract_source(
-            args.source_id, args.revision, load_extraction(args.extraction)
-        )
+        extract = engine.extract_source_reviewed if reviewed else engine.extract_source
+        return extract(args.source_id, args.revision, load_extraction(args.extraction), **reviewed)
     if command == "refresh":
         source = engine.read_source(args.source_id)
         path = engine.vault.root / "episodes" / f"{source['source_id']}.md"
-        return engine.remember(
+        remember = engine.remember_reviewed if reviewed else engine.remember
+        return remember(
             path.read_text(),
             source["title"],
             source["scope"],
@@ -240,6 +252,7 @@ def dispatch(args, engine: MemoryEngine):
             args.observed_at,
             source["source_id"],
             extraction=load_extraction(args.extraction),
+            **reviewed,
         )
     if command == "recall":
         return engine.recall(

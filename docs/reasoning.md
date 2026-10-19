@@ -101,7 +101,14 @@ Negations still matter: explicit denials are checked for contradictions. Known c
 are excluded from eligible premises. If the closure contradicts a denial or a configured
 single-value constraint, relationship deductions for that context are suppressed with a
 warning. Entity class inheritance can also produce type deductions with classification
-provenance.
+provenance. A stored entity kind is archival classification metadata, not an eternal
+independent premise. Class inheritance requires an explicit positive, conflict-free,
+registered originating claim that remains active in the same context and temporal
+snapshot. Its proof includes both the supporting claim and the entity/source. Retraction,
+correction, expiry or context filtering removes that support; a historical `known_at`
+can recover it. An unrelated active memory cannot revive a withdrawn type. Independently
+supported classifications remain eligible. Stored kinds are not automatically deleted
+or changed by retracting a claim.
 
 Premise selection shares the [memory consistency policy](memory-consistency.md) used by
 ingestion and recall. A source-licensed literal/object preference contradiction excludes

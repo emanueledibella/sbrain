@@ -10,8 +10,9 @@ def run_demo(engine: MemoryEngine) -> dict:
         "Marco is not joining the trip.\n"
         "We might visit a museum.\n"
     )
-    remembered = engine.remember(
+    remembered = engine.remember_reviewed(
         text,
+        review_reason="Owner-invoked fictional demo with explicitly defined fixture identities",
         title="DEMO: trip (fictional information)",
         scope="demo",
         observed_at="2026-10-01T10:00:00+02:00",

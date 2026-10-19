@@ -2,7 +2,7 @@
 
 [Documentation index](README.md)
 
-Automatic extraction separates the local model's proposal from deterministic
+Ordinary local-model and structured MCP extraction separate the local model's proposal from deterministic
 acceptance. A correct quote can still accompany the wrong subject, relation,
 polarity or object. These checks establish support by the source within a defined
 language subset; they do not establish real-world truth or general semantic accuracy.
@@ -55,8 +55,8 @@ relation in that same clause. An object-only quote cannot establish a triple.
 | Exact target/value | Identifying qualifiers, container details, numbers, units and recurrence must survive. `drawer of the hall` cannot become `hall`. Arbitrary translations and summaries are rejected, rather than semantically guessed. |
 | Polarity | The assertion/denial of the bound relation determines polarity. An affirmative pending status is positive; an explicitly denied participation is negative. Negation in another sentence does not flip this claim. |
 | Certainty | Recognized tentative clauses require `proposed`; affirmed clauses require `explicit`. Names such as `May Bell` do not count as modal verbs. Raw extraction cannot introduce `inferred` claims. |
-| Structural coverage | Every recognized source witness must be represented. Substantive clauses without a supported contract keep the source pending; they are not silently omitted. Only allowlisted greetings and explicit instruction clauses are excluded. This is not a proof of completeness for arbitrary language. |
-| Context | Automatic topic labels are normalized to `default`, with the proposed label retained in normalization provenance. Current contracts preserve qualifiers inside source subjects/targets; they do not license additional context partitions. Explicit/manual contexts are preserved. |
+| Structural coverage | Every recognized source witness must be represented. Substantive clauses without a supported contract keep the source pending; they are not silently omitted. Recognized questions, nonassertive clauses, greetings and explicit instruction clauses are excluded before relation matching. This is not a proof of completeness for arbitrary language. |
+| Context | Automatic topic labels are normalized to `default`, with the proposed label retained in normalization provenance. Current contracts preserve qualifiers inside source subjects/targets; they do not license additional context partitions. Only owner-reviewed import contexts are preserved. |
 | Duplicate source facts | Equivalent claims for one source witness become one claim. Differing identities, intervals, polarity, certainty or predicates are rejected instead of selecting one candidate. Distinct source occurrences and separate sources retain their evidence. |
 
 Source statements replace the candidate's readable `statement` with the exact
@@ -81,7 +81,7 @@ The `source-contracts-v4` gate adds narrowly defined equivalences:
 - An omitted subject declaration can be completed only if the missing reference is
   itself the complete source name and the source uniquely supports the same
   predicate, target, polarity, certainty and covering quote. Short or opaque refs
-  are never guessed. An existing declaration is never renamed or retyped. The
+  are never guessed. Existing identities are never renamed or retyped. New types are normalized to source-licensed minimum roles. The
   declared domain supplies a minimum type; unique compatible offered identities
   retain their exact ID/name/kind. Homonyms remain errors.
 - Repeated declarations with the same ref and every field identical are coalesced,
@@ -102,7 +102,7 @@ the source parser: complete subject/target, canonical predicate, minimum role
 types, polarity, certainty and exact quote offsets. They contain at most 20
 contracts and 12,000 characters of contract JSON, with explicit completeness
 metadata. Unsupported substantive source syntax produces no partial hint set;
-greetings request an empty extraction. These diagnostics are source data, not
+recognized questions and greetings request an empty extraction; repair never supplies declarative hints for a question. These diagnostics are source data, not
 permissions to follow embedded instructions, and do not authorize adoption. The
 repaired model output must pass every check again. The v4 benchmark retained its
 first-generation prompt, schema, vocabulary and two-request budget. The v5 change
@@ -151,11 +151,12 @@ complex coordination, unfamiliar tense or unsupported languages can remain pendi
 although a human would understand them. Fresh real notes and held-out tests are
 necessary to expand coverage safely. A small synthetic regression corpus cannot
 establish universal accuracy. `needs_review` requires inspecting the source and, if
-appropriate, submitting an explicitly reviewed structured extraction.
+appropriate, extending a tested contract or making a separate owner-attested CLI import.
+Ordinary structured MCP extraction cannot bypass unsupported language.
 
 ### Entity-valued relations and object_ref
 
-For automatic extraction, every registered object property requires an actual
+For ordinary extraction, every registered object property requires an actual
 `object_ref`, with a compatible target class. The engine can complete an omitted
 reference only when a contract unambiguously supplies the complete target:
 
@@ -175,15 +176,16 @@ inferred merely because two new names look similar.
 
 ## Temporal support and provenance
 
-Supplied instants must match explicit zoned ISO or Italian/English day-month
-timestamps in the evidence or local clauses for that subject. A prefixed explicit
-validity interval must preserve both bounds. Instants are compared in UTC. Invalid
+Supplied instants must match an explicit effective/decision prefix of the exact source
+fact, using zoned ISO or Italian/English day-month timestamps. Dates in subject names,
+target names and literal values cannot date the fact. The quote must include the dating
+prefix. An explicit start must be preserved; a bounded interval must preserve both bounds. Instants are compared in UTC. Invalid
 dates, invented dates or borrowed dates from other subjects are rejected. A null
 start uses `observed_at`; the existing bitemporal ledger and corrections remain
 unchanged. These bounded rules do not implement general temporal language parsing.
 
 Accepted provenance includes `extractor_version`, `quality_checks.version`
-(`source-contracts-v7` for current automatic extractions), normalized draft digest,
+(`source-contracts-v8` for current automatic extractions), normalized draft digest,
 mechanical normalization details,
 verification method, bound claim count and the model/prompt/schema/vocabulary hashes.
 These fields record the checks performed; they are not a truth certificate.
@@ -201,18 +203,37 @@ single excerpt. Different facts about one person may have independent intervals.
 undated fact keeps `observed_at` as its initial validity; existing claims retain their
 original provenance and are not silently rewritten.
 
-## Manual submissions and existing data
+## Structured submissions, owner review and existing data
 
-Explicit structured submissions retain `origin=agent/manual`. They pass schema,
-exact evidence, reference, scope, interval-order and SHACL checks, but bypass the
-automatic language-contract layer. Corrections and changes also remain explicit
-caller assertions. This path must not be described as independently verified.
-Legacy literal object relations remain readable; existing ledger entries are not
-rewritten or retroactively classified as passing the new policy. When a manual correction
-or revision changes a target-identifying value to a different entity name, it detaches
-the old object link. Same-target aliases, polarity changes and legacy descriptive
-participation values preserve the link;
-provenance records detachments. See [change operations](temporal-memory-and-corrections.md#explicit-change-operations).
+`remember(extraction=...)` and `extract_source(extraction=...)` are untrusted
+structured submissions with `origin=structured_submission`. They pass the same source
+contracts as local inference. The engine records an independent `adoption_checks` digest,
+version and normalizations, including for adapters other than Ollama.
+
+An offline operator may deliberately use `--extraction FILE --owner-review-reason REASON`
+with CLI `remember`, `extract` or `refresh`. Library equivalents are `remember_reviewed`
+and `extract_source_reviewed`, requiring `review_reason`. These are absent from the MCP
+tool list. They keep schema, evidence, exact references, scope, interval-order and SHACL
+checks, while the owner takes responsibility for unsupported semantics and identities.
+Provenance records `origin=owner_reviewed` and the attestation reason. This trust assertion
+is not cryptographic proof that a human reviewed it; filesystem/CLI access is an owner
+boundary. Do not use it as an automated model fallback.
+
+Version 8 analyzes speech acts before stripping punctuation, accepts legitimate empty
+extractions, rejects unsupported conditions/alternatives, and checks ambiguity even with
+an offered ID. Identity candidates collapse approved merges. New source-bound entity
+types use only relation-licensed minimum roles; inherited owner-reviewed types retain
+their classifications. Both literal/object preference forms license the same agent role.
+OWL classification premises require still-active supporting claims in the selected
+scope, context and both temporal axes. See [semantic safety](semantic-safety.md).
+
+Existing ledger entries keep their original provenance and are not silently rewritten
+or retroactively certified under version 8. An old `agent/manual` entry is not a new
+owner attestation. Explicit correction/revision/retraction tools remain caller assertions,
+not NLP extraction, and require an actual requested change. A changed target-identifying
+value detaches the old object link; same-target aliases, polarity changes and legacy
+participation descriptions preserve it. See
+[change operations](temporal-memory-and-corrections.md#explicit-change-operations).
 
 No additional model, runtime dependency, database or Compose service is required.
 The configured production model and its token/resource settings remain unchanged.

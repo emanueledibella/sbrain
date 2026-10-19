@@ -13,7 +13,7 @@ from datetime import datetime
 
 from .models import EntityDraft, instant
 
-QUALITY_VERSION = "source-contracts-v7"
+QUALITY_VERSION = "source-contracts-v8"
 
 
 def _canonical(value):
@@ -44,7 +44,8 @@ def _identity(value):
     # Determiners are not identifying suffixes. Keep all other words and numbers.
     value = _canonical(value).strip().rstrip(".!?;").strip()
     value = re.sub(r"^l'attività\s+", "", value, flags=re.I)
-    return re.sub(r"^(?:(?:the|il|lo|la|i|gli|le)\s+|l')", "", value, flags=re.I).casefold()
+    value = re.sub(r"^(?:(?:the|il|lo|la|i|gli|le)\s+|l')", "", value, flags=re.I)
+    return value.strip('"“”').casefold()
 
 
 @dataclass(frozen=True)
@@ -128,8 +129,7 @@ _PATTERNS = [
         + r"\s+"
         + _NEG
         + r"(?P<preference_verb>preferisce|preferiscono|vuole|vogliono|desidera|"
-        r"prefers?|wants?|want to)\s+"
-        + _OBJ,
+        r"prefers?|wants?|want to)\s+" + _OBJ,
     ),
     (
         "deadline",
@@ -188,6 +188,39 @@ _GREETINGS = (
 )
 
 
+def _nonassertive(sentence):
+    """Classify speech act BEFORE removing punctuation or finding relation spans.
+
+    A question may have a declarative word order. Internal URL query parameters
+    are not terminal question punctuation. Unknown constructions still fail closed.
+    """
+    return bool(
+        re.search(r"[?？][.!?。！？]*\s*$", sentence)
+        or re.match(r"^\s*¿", sentence)
+        or re.fullmatch(_GREETINGS, sentence, re.I)
+        or re.match(
+            r"^(?:ignora|ignore|inventa|invent|mi chiedo se|non so se|"
+            r"chiedo se|I wonder (?:if|whether)|I don't know (?:if|whether)|"
+            r"(?:è|e) vero che|is it true that)\b",
+            sentence,
+            re.I,
+        )
+    )
+
+
+def _unsupported_logic(clause):
+    # Explicitly quoted names and URLs are opaque identifiers, not operators.
+    logical = re.sub(r'https?://\S+|"[^"\n]+"|“[^”\n]+”', "", clause, flags=re.I)
+    return bool(
+        re.search(
+            r"\b(?:solo se|only if|a condizione che|provided that|unless|a meno che|"
+            r"oppure|o|or|se|if|whether|altrimenti|otherwise)\b",
+            logical,
+            re.I,
+        )
+    )
+
+
 def source_witnesses(text, vocabulary=None, *, strict=False):
     """Recognize a conservative Italian/English subset, independent of model output.
 
@@ -203,15 +236,25 @@ def source_witnesses(text, vocabulary=None, *, strict=False):
             for key in vocabulary.properties
         )
     # Sentence punctuation followed by whitespace/end; internal URL/decimal dots survive.
-    for sentence in re.finditer(r"\S[\s\S]*?(?:[.!?](?=\s|$)|;(?=\s)|$)", text):
-        raw = sentence.group().rstrip(".!?;").strip()
+    for sentence in re.finditer(r"\S[\s\S]*?(?:[.!?。！？](?=\s|$)|;(?=\s)|$)", text):
+        if _nonassertive(sentence.group()):
+            continue
+        raw = sentence.group().rstrip(".!?;。！？").strip()
         core = _canonical(raw)
         if len(core) != len(raw):
             if strict:
                 raise ValueError("Source normalization cannot safely preserve evidence offsets")
             continue
+        if _unsupported_logic(core):
+            if strict:
+                raise ValueError(
+                    "Conditional or alternative source needs review; do not turn logical "
+                    "qualifiers into one asserted entity"
+                )
+            continue
         prefix = re.match(
             r"(?:(?:dal|da|from)\s+.+?\s+(?:fino\s+(?:al|a)|until|to)\s+.+?,\s*"
+            r"|(?:dal|da|from)\s+.+?,\s*"
             r"|(?:il\s+.+?\s+)?(?:abbiamo deciso che|we decided that)\s+)",
             core,
             re.I,
@@ -417,7 +460,10 @@ def repair_feedback(text, vocabulary):
             "reason": "Source contains unsupported constructions; keep pending",
         }
     if not witnesses:
-        return {"empty_extraction_required": bool(re.fullmatch(_GREETINGS, text, re.I))}
+        return {
+            "empty_extraction_required": True,
+            "reason": "Recognized nonassertive source; do not turn questions into facts",
+        }
     hints = []
     for witness in witnesses[:20]:
         prop = vocabulary.property(witness.predicate)
@@ -458,6 +504,62 @@ def _participation_status(value, predicate, negative):
         if negative
         else {"partecipa", "participating", "attending"}
     )
+
+
+def normalize_new_kinds(draft, vocabulary, entities=(), scope=None, *, strict=True):
+    """New source-bound classifications use only the relation's licensed roles.
+
+    A plausible name does not establish a company, person, meeting or other
+    subtype. Existing reviewed classifications retain their identity and kind.
+    Multiple role requirements must have one compatible most-specific minimum.
+    """
+    required = {}
+    for claim in draft.claims:
+        prop = vocabulary.property(claim.predicate)
+        if prop is None:
+            continue
+        # The literal preference signature is deliberately broad for legacy
+        # storage. Expressing a preference still licenses the same agent role
+        # as its source-bound object representation, regardless of JSON form.
+        domain = "agent" if claim.predicate == "preference" else prop["domain"]
+        required.setdefault(claim.subject_ref, set()).add(domain)
+        if claim.object_ref and prop.get("range"):
+            required.setdefault(claim.object_ref, set()).add(prop["range"])
+    repairs = []
+    for entity in draft.entities:
+        if entity.existing_id or entity.ref not in required:
+            continue
+        roles = required[entity.ref]
+        minima = [kind for kind in roles if all(_is_kind(vocabulary, kind, r) for r in roles)]
+        if len(minima) != 1 or not (
+            _is_kind(vocabulary, entity.kind, minima[0])
+            or _is_kind(vocabulary, minima[0], entity.kind)
+        ):
+            if not strict:
+                continue  # Leave incompatible signatures to formal SHACL diagnostics.
+            raise ValueError("New entity has incompatible source-supported type requirements")
+        minimum = minima[0]
+        offered = {
+            (e.id, e.kind)
+            for e in entities
+            if e.scope == scope and e.name.casefold() == entity.name.casefold()
+        }
+        if len(offered) == 1:
+            _, known_kind = next(iter(offered))
+            if _is_kind(vocabulary, known_kind, minimum):
+                minimum = known_kind
+        if entity.kind != minimum:
+            repairs.append(
+                {
+                    "entity_ref": entity.ref,
+                    "field": "kind",
+                    "from": entity.kind,
+                    "to": minimum,
+                    "reason": "source relation minimum",
+                }
+            )
+            entity.kind = minimum
+    return repairs
 
 
 def bind_source_contracts(draft, text, vocabulary, entities, scope):
@@ -604,8 +706,9 @@ def bind_source_contracts(draft, text, vocabulary, entities, scope):
         bindings.append(wi)
     if len(covered) != len(witnesses):
         raise ValueError("Extraction omits recognized source facts; return a COMPLETE extraction")
-    if not result.claims and (result.entities or not re.fullmatch(_GREETINGS, text, re.I)):
-        raise ValueError("Empty extraction is supported only for recognized non-memory greetings")
+    if not result.claims and result.entities:
+        raise ValueError("A nonassertive source must not introduce factual entity classifications")
+    repairs.extend(normalize_new_kinds(result, vocabulary))
     # Newly materialized targets also pass name/identity grounding and offered-ID rules.
     result, identity_repairs = ground_draft(result, text, entities, scope)
     refs = {e.ref: e for e in result.entities}
@@ -616,8 +719,8 @@ def bind_source_contracts(draft, text, vocabulary, entities, scope):
             ref = getattr(claim, field)
             if ref:
                 entity = refs[ref]
-                signature[field] = ("existing", entity.existing_id) if entity.existing_id else (
-                    "new", ref
+                signature[field] = (
+                    ("existing", entity.existing_id) if entity.existing_id else ("new", ref)
                 )
         if witness in signatures:
             if signatures[witness] != signature:
@@ -685,6 +788,8 @@ def ground_draft(draft, text, entities, scope):
             e for e in entities if e.scope == scope and e.name.casefold() == entity.name.casefold()
         ]
         identities = {(e.id, e.kind) for e in offered}
+        if len({identifier for identifier, _ in identities}) > 1:
+            raise ValueError("Ambiguous offered identity; a model-selected UUID is not evidence")
         if not entity.existing_id and identities:
             if len(identities) != 1 or next(iter(identities))[1] != entity.kind:
                 raise ValueError("Ambiguous offered identity; do not create a duplicate")
@@ -771,12 +876,12 @@ def validate_source_grounding(draft, text, source, vocabulary=None):
         # other jobs/preferences cannot supply this fact's effective interval.
         subject = refs[claim.subject_ref]
         prop = vocabulary.property(claim.predicate)
-        start = claim.quote_start
-        if start is None:
+        evidence_start = claim.quote_start
+        if evidence_start is None:
             offsets = [m.start() for m in re.finditer(re.escape(claim.quote), text)]
             if len(offsets) != 1:
                 raise ValueError("Temporal grounding requires unique evidence")
-            start = offsets[0]
+            evidence_start = offsets[0]
         matches = []
         for witness in witnesses:
             roles = _source_roles(witness, claim.predicate, prop)
@@ -785,14 +890,14 @@ def validate_source_grounding(draft, text, source, vocabulary=None):
                 and _identity(roles[0]) == _identity(subject.name)
                 and _value_key(roles[1], claim.predicate)
                 == _value_key(claim.value, claim.predicate)
-                and start <= witness.support_start
-                and start + len(claim.quote) >= witness.end
+                and evidence_start <= witness.support_start
+                and evidence_start + len(claim.quote) >= witness.end
             ):
                 matches.append(witness)
         if len(matches) != 1:
             raise ValueError("Temporal grounding requires one source fact with timestamp support")
         witness = matches[0]
-        clauses = [text[witness.start:witness.end]]
+        clauses = [text[witness.start : witness.end]]
         if (
             claim.predicate == "deadline"
             and claim.valid_from is not None
@@ -801,7 +906,9 @@ def validate_source_grounding(draft, text, source, vocabulary=None):
             and not any(re.match(r"^\s*(?:dal|da|from)\s+", clause, re.I) for clause in clauses)
         ):
             raise ValueError("A deadline value is not the effective start of the claim")
-        supported = source_instants(clauses[0])
+        # Timestamps inside subject names, target names and literal values have
+        # different roles. Only an explicit effective/decision prefix dates a fact.
+        supported = source_instants(text[witness.start : witness.support_start])
         for name in ("valid_from", "valid_to"):
             value = getattr(claim, name)
             if value is not None and instant(value) not in supported:
@@ -815,6 +922,15 @@ def validate_source_grounding(draft, text, source, vocabulary=None):
                 re.I,
             )
             if not interval:
+                prefix = text[witness.start : witness.support_start]
+                effective = re.match(r"^\s*(?:dal|da|from|il)\s+", prefix, re.I)
+                if effective:
+                    if len(supported) != 1:
+                        raise ValueError("Effective time requires one unambiguous zoned timestamp")
+                    if claim.valid_from is None or instant(claim.valid_from) not in supported:
+                        raise ValueError("Preserve the source effective timestamp in valid_from")
+                    if evidence_start > witness.start:
+                        raise ValueError("Evidence must include the effective time prefix")
                 continue
             start, end = source_instants(interval[1]), source_instants(interval[2])
             if len(start) != 1 or len(end) != 1:
@@ -826,6 +942,8 @@ def validate_source_grounding(draft, text, source, vocabulary=None):
                 or instant(claim.valid_to) != next(iter(end))
             ):
                 raise ValueError("Preserve the source validity interval in valid_from and valid_to")
+            if evidence_start > witness.start:
+                raise ValueError("Evidence must include the validity interval prefix")
 
 
 def draft_digest(draft):

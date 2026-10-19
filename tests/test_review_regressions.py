@@ -186,8 +186,11 @@ def test_price_comparison_preserves_currency_recurrence_and_sign(
 def test_context_filter_precedes_semantic_claim_limit(engine):
     engine.semantics.max_claims = 1
     for context in ["one", "two"]:
-        engine.remember(
-            "The trip goes to Palermo.", scope="test", extraction=extraction(context=context)
+        engine.remember_reviewed(
+            "The trip goes to Palermo.",
+            scope="test",
+            extraction=extraction(context=context),
+            review_reason="Reviewed regression fixture",
         )
     assert engine.reason_memory("test", context="one")["scope"] == "test"
     _, projection = engine._semantic_snapshot("test", context="one")
@@ -302,7 +305,11 @@ def test_embedding_digest_change_repairs_vectors_without_reextracting(
         "_post",
         lambda path, body: {"embeddings": [[1.0, 0.0, 0.0] for _ in body["input"]]},
     )
-    saved = engine.remember("The trip goes to Palermo.", extraction=extraction())
+    saved = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     claim_id = saved["claim_ids"][0]
     before = engine.explain(claim_id)
     assert before["embedding_profile"] is not None
@@ -336,17 +343,22 @@ def test_live_neo4j_indexes_keep_vector_profiles_separate(live_graph_engine):
             return profile_id(engine.settings.embedding_model, 3, self.digest)
 
     engine.models = MutableVectors()
-    a = engine.remember("The trip goes to Palermo.", extraction=extraction())
+    a = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     assert not a["warnings"]
     first_profile = engine.embedding_profile
     engine.models.digest = "after"
-    b = engine.remember(
+    b = engine.remember_reviewed(
         "The trip goes to Catania.",
         extraction=extraction(
             "The trip goes to Catania.",
             value="Catania",
             context="other",
         ),
+        review_reason="Reviewed regression fixture",
     )
     assert not b["warnings"]
     second_profile = engine.embedding_profile
@@ -381,7 +393,11 @@ def test_model_swap_during_embedding_cannot_adopt_mixed_vectors(engine, monkeypa
         "_post",
         lambda path, body: {"embeddings": [[1.0, 0.0, 0.0] for _ in body["input"]]},
     )
-    result = engine.remember("The trip goes to Palermo.", extraction=extraction())
+    result = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     claim = engine._state(engine.vault.events()).claims[result["claim_ids"][0]]
     assert not claim.embedding and claim.embedding_profile is None
     assert any("model_changed_during_embedding" in w for w in result["warnings"])

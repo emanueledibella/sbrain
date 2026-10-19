@@ -20,7 +20,7 @@ def test_status_exposes_active_extraction_policy(engine):
     policy = engine.status()["extraction"]
     assert policy == {
         "model": "local-custom-model",
-        "quality_version": "source-contracts-v7",
+        "quality_version": "source-contracts-v8",
         "verification": "deterministic_source_contracts",
         "context_tokens": engine.settings.model_context,
         "output_tokens": 4096,
@@ -30,7 +30,7 @@ def test_status_exposes_active_extraction_policy(engine):
 
 def relation(engine):
     text = "Marco is joining the trip."
-    return engine.remember(
+    return engine.remember_reviewed(
         text,
         extraction={
             "entities": [
@@ -48,6 +48,7 @@ def relation(engine):
                 }
             ],
         },
+        review_reason="Reviewed regression fixture",
     )
 
 
@@ -109,8 +110,12 @@ def test_source_symlink_is_rejected_after_startup(engine, memory, tmp_path):
 
 def test_retry_checks_explicit_observed_time_and_normalizes_timezone(engine):
     text = "The trip goes to Palermo."
-    original = engine.remember(
-        text, observed_at="2026-10-01T10:00:00Z", request_id="time", extraction=extraction()
+    original = engine.remember_reviewed(
+        text,
+        observed_at="2026-10-01T10:00:00Z",
+        request_id="time",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
     )
     assert (
         engine.remember(text, observed_at="2026-10-01T12:00:00+02:00", request_id="time")[
@@ -133,16 +138,22 @@ def test_episode_failure_reports_durable_source_and_adopted_claims(engine, monke
         return original(path, data)
 
     monkeypatch.setattr(store, "atomic_write", fail_episode)
-    result = engine.remember(
-        "The trip goes to Palermo.", extraction=extraction(), request_id="view"
+    result = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        request_id="view",
+        review_reason="Reviewed regression fixture",
     )
     assert result["status"] == "stored_with_warnings"
     assert result["claim_ids"]
     assert engine.read_source(result["source_id"])["text"] == "The trip goes to Palermo."
     assert engine.status()["pending_extraction"] == []
     monkeypatch.setattr(store, "atomic_write", original)
-    retried = engine.remember(
-        "The trip goes to Palermo.", extraction=extraction(), request_id="view"
+    retried = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        request_id="view",
+        review_reason="Reviewed regression fixture",
     )
     assert retried["claim_ids"] == result["claim_ids"]
     assert (engine.vault.root / "episodes" / f"{result['source_id']}.md").exists()
@@ -223,7 +234,11 @@ def test_state_cache_reuses_head_and_keeps_old_snapshots_immutable(engine, memor
 
 def test_cache_observes_another_engine_and_checks_modified_prefix(engine, memory):
     other = MemoryEngine(engine.settings, graph=None, models=None, clock=engine.clock)
-    other.remember("The trip goes to Catania.", extraction=extraction("The trip goes to Catania."))
+    other.remember_reviewed(
+        "The trip goes to Catania.",
+        extraction=extraction("The trip goes to Catania."),
+        review_reason="Reviewed regression fixture",
+    )
     assert engine.status()["claims"] == 2
     content = engine.vault.log.read_text().replace("Palermo", "Catania")
     engine.vault.log.write_text(content)
@@ -233,8 +248,11 @@ def test_cache_observes_another_engine_and_checks_modified_prefix(engine, memory
 
 def test_recall_verifies_only_selected_sources_and_caches_shared_evidence(engine, monkeypatch):
     for index in range(20):
-        engine.remember(
-            "The trip goes to Palermo.", title=f"Source {index}", extraction=extraction()
+        engine.remember_reviewed(
+            "The trip goes to Palermo.",
+            title=f"Source {index}",
+            extraction=extraction(),
+            review_reason="Reviewed regression fixture",
         )
     calls = []
     original = engine.vault.read
@@ -250,15 +268,24 @@ def test_only_affected_profiles_are_rewritten(engine, memory):
     entity = engine.explain(memory["claim_ids"][0])["subject_id"]
     path = engine.vault.root / "entities" / f"{entity}.md"
     old = path.stat().st_mtime_ns
-    engine.remember("The trip goes to Palermo.", extraction=extraction())  # a distinct identity
+    engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )  # a distinct identity
     assert path.stat().st_mtime_ns == old
 
 
 def test_aliases_merges_and_conflicts_are_temporal_and_auditable(engine, clock):
-    first = engine.remember("The trip goes to Palermo.", extraction=extraction())
-    second = engine.remember(
+    first = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
+    second = engine.remember_reviewed(
         "The trip goes to Catania.",
         extraction=extraction("The trip goes to Catania.", value="Catania"),
+        review_reason="Reviewed regression fixture",
     )
     a = engine.explain(first["claim_ids"][0])["subject_id"]
     b = engine.explain(second["claim_ids"][0])["subject_id"]
@@ -294,7 +321,12 @@ def test_aliases_merges_and_conflicts_are_temporal_and_auditable(engine, clock):
 
 def test_merge_rejects_cross_scope_and_preserves_original_entity_ids(engine, memory):
     a = engine.explain(memory["claim_ids"][0])["subject_id"]
-    other = engine.remember("The trip goes to Palermo.", scope="work", extraction=extraction())
+    other = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        scope="work",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     b = engine.explain(other["claim_ids"][0])["subject_id"]
     with pytest.raises(ValueError, match="same scope"):
         engine.identity_change(b, kind="merge", target_id=a, reason="Invalid merge")
@@ -304,8 +336,9 @@ def test_merge_rejects_cross_scope_and_preserves_original_entity_ids(engine, mem
 def test_extraction_provenance_is_recorded(engine, memory):
     result = engine.explain(memory["claim_ids"][0])
     assert result["provenance"] == {
-        "origin": "agent/manual",
-        "extractor_version": 2,
+        "origin": "owner_reviewed",
+        "extractor_version": 3,
+        "owner_review_reason": "Reviewed storage fixture",
         "vocabulary_sha256": engine.vocabulary.digest,
         "validation_shapes_sha256": engine.semantics.shapes_digest,
         "source_sha256": hashlib.sha256(b"The trip goes to Palermo.").hexdigest(),
@@ -323,7 +356,11 @@ def test_graph_ignores_future_and_uncertain_context(live_graph_engine, clock):
     clock.set("2026-10-13T10:00:00Z")
     draft = extraction("Tesseract is the trip codename.", existing_id=event_id, value="Tesseract")
     draft["claims"][0]["predicate"] = "codename"
-    engine.remember("Tesseract is the trip codename.", extraction=draft)
+    engine.remember_reviewed(
+        "Tesseract is the trip codename.",
+        extraction=draft,
+        review_reason="Reviewed regression fixture",
+    )
     assert not engine.recall("tesseract", valid_at=past, known_at=past)["memories"]
     assert not engine.graph.search("tesseract", None, None, valid_at=past, known_at=past)
     assert not engine.recall("tesseract", valid_at=past)["memories"]
@@ -335,7 +372,11 @@ def test_graph_ignores_future_and_uncertain_context(live_graph_engine, clock):
         value="Hyperion",
         epistemic="proposed",
     )
-    engine.remember("Hyperion might be the trip codename.", extraction=proposed)
+    engine.remember_reviewed(
+        "Hyperion might be the trip codename.",
+        extraction=proposed,
+        review_reason="Reviewed regression fixture",
+    )
     assert not engine.graph.search("hyperion", None, None)
     assert not engine.recall("hyperion")["memories"]
     assert engine.recall("hyperion", include_uncertain=True)["memories"]
@@ -346,7 +387,11 @@ def test_graph_incremental_projection_keeps_node_identity_and_rejects_stale_snap
     live_graph_engine, clock
 ):
     engine = live_graph_engine
-    saved = engine.remember("The trip goes to Palermo.", extraction=extraction())
+    saved = engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     rows = engine.graph.query(
         "MATCH (a:Assertion {vault_id:$vault}) RETURN elementId(a) AS id", vault=engine.vault.id
     )
@@ -393,7 +438,9 @@ def test_negated_relation_conflicts_with_affirmed_relation(engine):
             }
         ],
     }
-    result = engine.remember(text, extraction=draft)
+    result = engine.remember_reviewed(
+        text, extraction=draft, review_reason="Reviewed regression fixture"
+    )
     assert result["conflicts"]
     assert all(m["conflicts"] for m in engine.recall("Marco")["memories"])
 
@@ -435,7 +482,12 @@ def test_semantic_evaluation_does_not_adopt_memories(engine):
 def test_oversized_results_do_not_read_unreturned_sources(engine, monkeypatch):
     for index in range(10):
         text = "The trip goes to Palermo. " + ("details " * 180)
-        engine.remember(text, title=str(index), extraction=extraction(text))
+        engine.remember_reviewed(
+            text,
+            title=str(index),
+            extraction=extraction(text),
+            review_reason="Reviewed regression fixture",
+        )
     reads = []
     original = engine.vault.read
     monkeypatch.setattr(engine.vault, "read", lambda s: (reads.append(s.key), original(s))[1])
@@ -456,7 +508,7 @@ def test_shared_source_is_hash_verified_once_per_response(engine, monkeypatch):
             "quote": "Marco is joining the trip.",
         }
     )
-    engine.remember(text, extraction=draft)
+    engine.remember_reviewed(text, extraction=draft, review_reason="Reviewed regression fixture")
     reads = []
     original = engine.vault.read
     monkeypatch.setattr(engine.vault, "read", lambda s: (reads.append(s.key), original(s))[1])
@@ -495,10 +547,18 @@ def test_explicit_replay_restores_projection_from_restored_canonical_backup(
     live_graph_engine, clock
 ):
     engine = live_graph_engine
-    engine.remember("The trip goes to Palermo.", extraction=extraction())
+    engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     backup = engine.vault.log.read_bytes()
     clock.set("2026-10-13T10:00:00Z")
-    engine.remember("The trip goes to Catania.", extraction=extraction("The trip goes to Catania."))
+    engine.remember_reviewed(
+        "The trip goes to Catania.",
+        extraction=extraction("The trip goes to Catania."),
+        review_reason="Reviewed regression fixture",
+    )
     with engine.vault.transaction():
         engine.vault.log.write_bytes(backup)
     assert not engine.replay()["warnings"]

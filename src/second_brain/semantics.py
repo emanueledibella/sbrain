@@ -248,11 +248,14 @@ class Semantics:
         known_entities = {
             e.id for event in state.events if event.recorded_at <= known for e in event.entities
         }
-        entity_nodes, entity_origins = {}, {}
+        entity_nodes, entity_origins, type_supports = {}, {}, {}
         for event in state.events:
             if event.recorded_at <= known:
                 for entity in event.entities:
                     entity_origins[entity.id] = event.metadata.get("source_key")
+                    type_supports[entity.id] = {
+                        c.id for c in event.claims if entity.id in {c.subject_id, c.object_id}
+                    }
         for entity in state.entities.values():
             if entity.id not in known_entities or (scope is not None and entity.scope != scope):
                 continue
@@ -317,6 +320,8 @@ class Semantics:
             "sources": source_nodes,
             "claim_nodes": claim_nodes,
             "entity_origins": entity_origins,
+            "type_supports": type_supports,
+            "entity_records": state.entities,
             "valid_at": valid.isoformat(),
             "known_at": known.isoformat(),
             "scope": scope,
@@ -337,9 +342,12 @@ class Semantics:
         return (
             projection["entities"][claim.subject_id],
             self.vocabulary.property_iri(claim.predicate),
-            projection["entities"][claim.object_id] if claim.object_id else Literal(
+            projection["entities"][claim.object_id]
+            if claim.object_id
+            else Literal(
                 _value_key(claim.value, claim.predicate)
-                if claim.predicate in {"deadline", "price"} else claim.value
+                if claim.predicate in {"deadline", "price"}
+                else claim.value
             ),
         )
 
@@ -400,7 +408,6 @@ class Semantics:
         if len(grouped) > 64:
             raise ValueError("Reasoning exceeds 64 contexts; select a specific context")
         all_results = []
-        typed = False
         for (_, context), selected in sorted(grouped.items()):
             facts, proofs = Graph(), {}
             entity_nodes = projection["entities"]
@@ -408,24 +415,21 @@ class Semantics:
                 triple = self._ground(projection, claim)
                 facts.add(triple)
                 proofs[triple] = Proof(claims=frozenset({claim.id}))
-            # Immutable entity classifications can be used independently of positive claims.
-            for s, p, o in projection["graph"].triples((None, RDF.type, None)):
-                if (
-                    not typed
-                    and s in set(entity_nodes.values())
-                    and (
-                        o == SB.Entity
-                        or o
-                        in {
-                            self.vocabulary.class_iri(i["key"])
-                            for i in self.vocabulary.classes.values()
-                        }
-                    )
-                ):
-                    facts.add((s, p, o))
-                    identifiers = {key for key, node in entity_nodes.items() if node == s}
-                    proofs[(s, p, o)] = Proof(entities=frozenset(identifiers))
-            typed = True
+            # A stored kind is not an eternal, independent premise. Its source
+            # support must still be active, positive, explicit and conflict-free
+            # in this temporal/context snapshot. Retractions remove that support;
+            # historical snapshots recover it without rewriting entity records.
+            selected_ids = {c.id for c in selected}
+            for identifier, node in entity_nodes.items():
+                supporting = projection["type_supports"].get(identifier, set()) & selected_ids
+                if not supporting:
+                    continue
+                kind = projection["entity_records"][identifier].kind
+                triple = (node, RDF.type, self.vocabulary.class_iri(kind))
+                facts.add(triple)
+                proof = Proof(claims=frozenset({min(supporting)}), entities=frozenset({identifier}))
+                if triple not in proofs:
+                    proofs[triple] = proof
             original = set(facts)
             # Evidence reconstruction executes the same safe axioms as the OWL profile.
             self._proof_closure(proofs)

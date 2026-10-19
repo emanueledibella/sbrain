@@ -29,7 +29,15 @@ from .models import (
     uid,
 )
 from .ollama import Ollama
-from .quality import QUALITY_VERSION
+from .quality import (
+    QUALITY_VERSION,
+    bind_source_contracts,
+    complete_subject_refs,
+    draft_digest,
+    ground_draft,
+    normalize_new_kinds,
+    validate_source_grounding,
+)
 from .semantics import Semantics
 from .state import State
 from .store import Vault, atomic_write, private_directory
@@ -60,9 +68,13 @@ class MemoryEngine:
         self._view_lock = FileLock(self.vault.meta / "views.lock", timeout=240, mode=0o600)
         self._queue = None
         self._embedding_profile = (
-            None if hasattr(self.models, "embedding_identity") else
-            profile_id(self.settings.embedding_model, self.settings.embedding_dimensions,
-                       "unversioned-adapter")
+            None
+            if hasattr(self.models, "embedding_identity")
+            else profile_id(
+                self.settings.embedding_model,
+                self.settings.embedding_dimensions,
+                "unversioned-adapter",
+            )
         )
 
     def close(self):
@@ -146,6 +158,42 @@ class MemoryEngine:
         extraction: Extraction | dict | None = None,
         background: bool = False,
     ) -> dict:
+        return self._remember(
+            text, title, scope, kind, observed_at, source_id, request_id, extraction, background
+        )
+
+    def remember_reviewed(self, *args, review_reason: str, **kwargs) -> dict:
+        """Owner-attested offline/library import. Deliberately NOT an MCP tool.
+
+        The caller takes responsibility for semantics beyond supported source
+        contracts. A model-supplied JSON object is never owner review by default.
+        """
+        return self._remember(
+            *args, **kwargs, owner_review_reason=self._review_reason(review_reason)
+        )
+
+    @staticmethod
+    def _review_reason(reason):
+        if not isinstance(reason, str) or not reason.strip() or len(reason) > 2000:
+            raise ValueError("Owner review requires a nonempty reason of at most 2000 characters")
+        return reason.strip()
+
+    def _remember(
+        self,
+        text,
+        title="Note",
+        scope="personal",
+        kind="note",
+        observed_at=None,
+        source_id=None,
+        request_id=None,
+        extraction=None,
+        background=False,
+        *,
+        owner_review_reason=None,
+    ):
+        if owner_review_reason and extraction is None:
+            raise ValueError("Owner review requires an explicit structured extraction")
         if background and (extraction is not None or self.settings.worker_queue_path is None):
             raise ValueError(
                 "Background ingestion requires a recovery queue and no manual extraction"
@@ -205,27 +253,38 @@ class MemoryEngine:
                 job = self.job_queue().get(self.vault.id, job_id)
             except Exception:
                 return {
-                    "source_id": source.source_id, "revision": source.revision,
-                    "status": "stored_pending_extraction", "claim_ids": [],
+                    "source_id": source.source_id,
+                    "revision": source.revision,
+                    "status": "stored_pending_extraction",
+                    "claim_ids": [],
                     "failure": Failure("queue", "queue_unavailable", True).dict(),
                     "warnings": ["Source saved; worker reconciliation will restore its job"],
                 }
             if job and job["status"] in {"needs_review", "done"}:
                 return self.source_status(source.source_id, source.revision)
             return {
-                "source_id": source.source_id, "revision": source.revision,
-                "status": "queued", "claim_ids": [],
-                "job_id": job_id, "warnings": [],
+                "source_id": source.source_id,
+                "revision": source.revision,
+                "status": "queued",
+                "claim_ids": [],
+                "job_id": job_id,
+                "warnings": [],
             }
-        return self.extract_source(source.source_id, source.revision, extraction=extraction)
+        return self._extract_with_review(
+            source.source_id, source.revision, extraction, owner_review_reason
+        )
 
     def extraction_work(self, source):
         generation = hashlib.sha256(
             f"{source.sha256}:{self.settings.chat_model}:{QUALITY_VERSION}:"
             f"{self.vocabulary.digest}:{self.semantics.shapes_digest}".encode()
         ).hexdigest()
-        return Work("extraction", source.key, generation,
-                    {"source_id": source.source_id, "revision": source.revision})
+        return Work(
+            "extraction",
+            source.key,
+            generation,
+            {"source_id": source.source_id, "revision": source.revision},
+        )
 
     def source_status(self, source_id, revision=None):
         with self.vault.transaction() as events:
@@ -237,18 +296,25 @@ class MemoryEngine:
         if source.key in state.extracted or covered:
             result = self._ingest_result(state, covered or source, [])
             if covered:
-                result.update(status="superseded", revision=source.revision,
-                              indexed_revision=covered.revision, superseded_by=covered.key)
+                result.update(
+                    status="superseded",
+                    revision=source.revision,
+                    indexed_revision=covered.revision,
+                    superseded_by=covered.key,
+                )
             return result
         job = None
         if self.settings.worker_queue_path is not None:
             work = self.extraction_work(source)
             job = self.job_queue().get(self.vault.id, JobQueue.identifier(self.vault.id, work))
         return {
-            "source_id": source.source_id, "revision": source.revision,
-            "status": "needs_review" if job and job["status"] == "needs_review" else
-                "stored_pending_extraction",
-            "claim_ids": [], "job": job,
+            "source_id": source.source_id,
+            "revision": source.revision,
+            "status": "needs_review"
+            if job and job["status"] == "needs_review"
+            else "stored_pending_extraction",
+            "claim_ids": [],
+            "job": job,
         }
 
     def extract_source(
@@ -257,6 +323,23 @@ class MemoryEngine:
         revision: int | None = None,
         extraction: Extraction | dict | None = None,
     ) -> dict:
+        return self._extract_with_review(source_id, revision, extraction, None)
+
+    def extract_source_reviewed(
+        self,
+        source_id,
+        revision=None,
+        extraction=None,
+        *,
+        review_reason,
+    ) -> dict:
+        if extraction is None:
+            raise ValueError("Owner review requires an explicit structured extraction")
+        return self._extract_with_review(
+            source_id, revision, extraction, self._review_reason(review_reason)
+        )
+
+    def _extract_with_review(self, source_id, revision, extraction, owner_review_reason):
         # Foreground calls and the recovery worker share this per-revision lock.
         # It prevents redundant local inference without holding the ledger writer lock.
         with self.vault.transaction() as events:
@@ -269,9 +352,11 @@ class MemoryEngine:
             timeout=self.settings.model_timeout * 3 + 30,
             mode=0o600,
         ):
-            return self._extract_source(source.source_id, source.revision, extraction)
+            return self._extract_source(
+                source.source_id, source.revision, extraction, owner_review_reason
+            )
 
-    def _extract_source(self, source_id, revision, extraction):
+    def _extract_source(self, source_id, revision, extraction, owner_review_reason=None):
         with self.vault.transaction() as events:
             state = self._state(events)
             source = self._source(state, source_id, revision)
@@ -284,26 +369,46 @@ class MemoryEngine:
             try:
                 if extraction is None:
                     if self.models is None:
-                        raise RecoveryFailure(
-                            Failure("extraction", "models_disabled", True)
-                        )
+                        raise RecoveryFailure(Failure("extraction", "models_disabled", True))
                     draft = self.models.extract(text, source, known_entities)
                     provenance = {
                         "origin": "local_model",
                         "model": self.settings.chat_model,
-                        "extractor_version": 11,
+                        "extractor_version": 12,
                     }
                     if hasattr(self.models, "provenance"):
                         provenance.update(self.models.provenance())
                 else:
                     draft = Extraction.model_validate(extraction)
-                    provenance = {"origin": "agent/manual", "extractor_version": 2}
+                    provenance = {"origin": "structured_submission", "extractor_version": 3}
                 draft = self.vocabulary.normalize(draft)
+                if owner_review_reason:
+                    provenance.update(
+                        origin="owner_reviewed", owner_review_reason=owner_review_reason
+                    )
+                else:
+                    # The adoption boundary independently enforces source support
+                    # for every adapter and structured MCP submission, not just Ollama.
+                    type_repairs = normalize_new_kinds(
+                        draft, self.vocabulary, known_entities, source.scope
+                    )
+                    draft, repairs = ground_draft(draft, text, known_entities, source.scope)
+                    draft, declarations = complete_subject_refs(
+                        draft, text, self.vocabulary, known_entities, source.scope
+                    )
+                    draft, bindings = bind_source_contracts(
+                        draft, text, self.vocabulary, known_entities, source.scope
+                    )
+                    validate_source_grounding(draft, text, source, self.vocabulary)
+                    provenance["adoption_checks"] = {
+                        "version": QUALITY_VERSION,
+                        "draft_sha256": draft_digest(draft),
+                        "verification": "deterministic_source_contracts",
+                        "normalizations": type_repairs + repairs + declarations + bindings,
+                    }
                 provenance["vocabulary_sha256"] = self.vocabulary.digest
                 provenance["validation_shapes_sha256"] = self.semantics.shapes_digest
-                validate_extraction(
-                    draft, text, observed_at=source.observed_at, semantic_checks=extraction is None
-                )
+                validate_extraction(draft, text, observed_at=source.observed_at)
                 validate_entity_references(draft, known_entities, source.scope)
                 self.semantics.validate_draft(draft, source, known_entities)
                 batch = self._vectors([c.statement for c in draft.claims])
@@ -313,7 +418,13 @@ class MemoryEngine:
                     covered = state.extraction_cover(source)
                     if source.key not in state.extracted and not covered:
                         entities, claims = self._adopt(
-                            draft, source, text, state, batch.vectors, batch.profile
+                            draft,
+                            source,
+                            text,
+                            state,
+                            batch.vectors,
+                            batch.profile,
+                            source_bound=not owner_review_reason,
                         )
                         for claim in claims:
                             claim.provenance = {**provenance, "source_sha256": source.sha256}
@@ -365,11 +476,13 @@ class MemoryEngine:
 
     def _identity_candidates(self, state: State, scope: str) -> list[Entity]:
         at = instant(self.clock())
+        identities, names = state.identity_view(at, at)
         return [
-            entity.model_copy(update={"name": name})
-            for entity in state.entities.values()
+            state.entities[identifier].model_copy(update={"name": name})
+            for identifier in sorted(set(identities.values()))
+            for entity in [state.entities[identifier]]
             if entity.scope == scope
-            for name in sorted(state.names(entity.id, at, at))
+            for name in sorted(names[identifier])
         ]
 
     @staticmethod
@@ -384,11 +497,14 @@ class MemoryEngine:
         state: State,
         vectors: list[list[float]],
         embedding_profile: str | None = None,
+        *,
+        source_bound: bool = False,
     ) -> tuple[list[Entity], list[Claim]]:
         # Recheck against the latest state under the writer lock after inference.
-        validate_entity_references(
-            draft, self._identity_candidates(state, source.scope), source.scope
-        )
+        candidates = self._identity_candidates(state, source.scope)
+        if source_bound:
+            draft, _ = ground_draft(draft, text, candidates, source.scope)
+        validate_entity_references(draft, candidates, source.scope)
         entities = []
         refs = {}
         used_refs = {c.subject_ref for c in draft.claims} | {
@@ -452,8 +568,11 @@ class MemoryEngine:
             ]
         at = instant(self.clock())
         index = ConflictIndex(
-            state, self.vocabulary,
-            [v.claim for v in state.current.values() if v.status == "active"], at, at,
+            state,
+            self.vocabulary,
+            [v.claim for v in state.current.values() if v.status == "active"],
+            at,
+            at,
         )
         conflicts = []
         for claim in claims:
@@ -1105,7 +1224,8 @@ class MemoryEngine:
             return self.models.embedding_identity()
         # Injected providers must expose embedding_identity for mutable model weights.
         return profile_id(
-            self.settings.embedding_model, self.settings.embedding_dimensions,
+            self.settings.embedding_model,
+            self.settings.embedding_dimensions,
             "unversioned-adapter",
         )
 

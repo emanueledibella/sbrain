@@ -235,7 +235,8 @@ def test_separate_preference_facts_can_choose_different_representations():
     )
     result = extract(data, TEXT + " " + second)
     assert [(c.predicate, c.epistemic) for c in result.claims] == [
-        ("prefers", "explicit"), ("preference", "proposed"),
+        ("prefers", "explicit"),
+        ("preference", "proposed"),
     ]
 
 
@@ -289,5 +290,5 @@ def test_retry_and_foreground_race_adopt_saved_mixed_note_only_once(engine, monk
     claims = [engine.explain(i) for i in again["claim_ids"]]
     assert {c["epistemic"] for c in claims} == {"explicit", "proposed"}
     assert all(
-        c["provenance"]["quality_checks"]["version"] == "source-contracts-v7" for c in claims
+        c["provenance"]["quality_checks"]["version"] == "source-contracts-v8" for c in claims
     )

@@ -425,8 +425,12 @@ def test_correct_interval_is_accepted_and_other_subjects_dates_are_not_borrowed(
         "(UTC+02:00), Nora Bell works for Cedar Labs."
     )
     item = draft(
-        period, "Nora Bell", predicate="works_for", value="Cedar Labs",
-        valid_from="2027-04-01T08:00Z", valid_to="2027-05-01T08:00Z",
+        period,
+        "Nora Bell",
+        predicate="works_for",
+        value="Cedar Labs",
+        valid_from="2027-04-01T08:00Z",
+        valid_to="2027-05-01T08:00Z",
     )
     validate_source_grounding(item, period, source())
     text = period + " Trip Winter goes to Dublin."
@@ -683,7 +687,9 @@ def test_shacl_checks_subject_role_even_when_object_is_only_text(engine):
     )
     # A person participates in an event. An event cannot be that subject, even
     # when object_ref is absent (the legacy literal fallback).
-    result = engine.remember(text, extraction=item)
+    result = engine.remember_reviewed(
+        text, extraction=item, review_reason="Reviewed regression fixture"
+    )
     assert result["status"] == "stored_pending_extraction"
     assert "SHACL" in " ".join(result["warnings"])
 
@@ -693,7 +699,9 @@ def test_changed_value_does_not_keep_a_stale_object_edge(engine, kind):
     text = "The trip goes to Dublin."
     item = draft(text, object_ref="city")
     item.entities.append(type(item.entities[0])(ref="city", name="Dublin", kind="place"))
-    saved = engine.remember(text, extraction=item)
+    saved = engine.remember_reviewed(
+        text, extraction=item, review_reason="Reviewed regression fixture"
+    )
     old = engine.explain(saved["claim_ids"][0])
     args = dict(
         kind=kind,
@@ -717,7 +725,9 @@ def test_polarity_only_correction_keeps_the_same_target_edge(engine):
     text = "The trip goes to Dublin."
     item = draft(text, object_ref="city")
     item.entities.append(type(item.entities[0])(ref="city", name="Dublin", kind="place"))
-    saved = engine.remember(text, extraction=item)
+    saved = engine.remember_reviewed(
+        text, extraction=item, review_reason="Reviewed regression fixture"
+    )
     old = engine.explain(saved["claim_ids"][0])
     changed = engine.change(
         old["id"],
@@ -771,7 +781,9 @@ def test_approved_alias_value_change_preserves_object_identity(engine):
     text = "The trip goes to Dublin."
     item = draft(text, object_ref="city")
     item.entities.append(type(item.entities[0])(ref="city", name="Dublin", kind="place"))
-    saved = engine.remember(text, extraction=item)
+    saved = engine.remember_reviewed(
+        text, extraction=item, review_reason="Reviewed regression fixture"
+    )
     old = engine.explain(saved["claim_ids"][0])
     engine.identity_change(
         old["object_id"], kind="alias", alias="Dublin City", reason="Approved same place"

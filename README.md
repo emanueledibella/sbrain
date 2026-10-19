@@ -64,7 +64,9 @@ as well as evidence, identity, temporal and SHACL checks. It makes no AI-review 
 Unsupported or ambiguous language remains pending for retry/review. These conservative
 rules cover a defined Italian/English subset, not arbitrary language understanding.
 See [extraction quality](docs/extraction-quality.md) for supported forms and limits.
-Explicit manual/agent submissions remain available for reviewed interpretations.
+Agent-supplied structured extractions pass the same source-support checks. Explicit
+owner-reviewed imports are separate CLI/library operations with recorded attestation;
+see [semantic safety and trust boundaries](docs/semantic-safety.md).
 Automatic extraction uses a deterministic context and removes equivalent duplicate
 claims for the same source fact. Saved memories are compared using object identities,
 declared cardinality, source-supported preference representations and temporal overlap.
@@ -225,7 +227,8 @@ vault/
 A note can describe many entities and memories; a separate file for each attribute is not
 required. Entity IDs are stable, types are open strings (`person`, `event`, `project`, etc.),
 and predicates are extensible. Automatic adoption also requires registered signatures and
-supported source contracts; manual submissions retain the explicit caller-assertion contract.
+supported source contracts, including structured MCP submissions. Owner-attested CLI
+imports retain a separate explicit caller-assertion contract.
 The extractor can propose an offered `existing_id`; the engine checks scope, exact name,
 and type. It can complete a missing ID only for a unique exact offered identity. Known
 homonyms are ambiguous, and similar names never authorize reuse. This can still create

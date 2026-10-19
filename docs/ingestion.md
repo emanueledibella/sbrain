@@ -99,9 +99,11 @@ failure leaves the whole batch unadopted. Transport failures do not go through t
 JSON-repair loop. They are handled by the independent worker's job retry policy.
 
 The engine also accepts an `extraction` object supplied explicitly by an agent or caller.
-This bypasses chat inference but still applies structural, evidence, identity, temporal
-and SHACL checks. The automatic source-contract checks are specific to the local-model path; manual
-submissions retain the explicit caller-assertion contract.
+This bypasses chat inference and passes the same deterministic source contracts, full
+names, relation/direction, values, polarity, certainty, type, identity, time, evidence and
+SHACL checks. `MemoryEngine` checks the adoption boundary independently of the model
+adapter. A write token or model-generated JSON is not owner review. Owner-attested
+imports are a separate CLI/library path, absent from MCP; see [semantic safety](semantic-safety.md).
 
 ### Evidence, identity and time checks
 
@@ -115,7 +117,9 @@ from; they do not establish that the extracted interpretation follows from it.
 Identity validation first requires every claim's subject/object reference to occur in the
 draft's entity list and rejects duplicate entity references. Reusing an `existing_id`
 additionally requires an offered identity with the same ID, case-insensitive name, exact
-kind and source scope. An existing work identity cannot be reused for a personal source.
+kind and source scope. The candidate list uses the current temporal canonical identity
+view, so approved merges yield one identity with aliases. Multiple distinct canonical
+homonyms are rejected even if the model supplies an offered UUID. An existing work identity cannot be reused for a personal source.
 These are reference and reuse checks, not proof that two similarly named people are the
 same person. See [identity history](temporal-memory-and-corrections.md#identity-history).
 
@@ -125,14 +129,14 @@ explicit start or the source's observation time when no start was supplied. For 
 These checks enforce temporal consistency; they cannot verify when an event actually
 happened.
 
-The automatic path also binds each candidate to an independently recognized source
+Both ordinary extraction paths bind each candidate to an independently recognized source
 clause in [`quality.py`](../src/second_brain/quality.py). Complete names, relation and
 direction, exact values, polarity and certainty must agree with that clause. Entity-valued
 relations require a compatible `object_ref`; only unique source-grounded targets can
 complete missing links. Unsupported substantive clauses or omitted recognized facts
 keep the whole source pending. No AI reviewer authorizes adoption. See
 [extraction quality](extraction-quality.md) for language coverage, temporal anchors,
-mechanical normalization and the manual-submission boundary.
+mechanical normalization and the owner-review boundary.
 
 ### RDF and SHACL during validation
 
@@ -192,7 +196,7 @@ rechecks identity references and whether another request already processed the s
 New entities and claims receive stable IDs. Automatic extraction normalizes ungrounded
 topic labels to `default` and deduplicates equivalent candidates for the same source
 witness before embeddings. Incompatible duplicate identities or intervals reject the
-batch. Explicit/manual contexts remain unchanged. Adoption also deduplicates fully
+batch. Only explicit owner-reviewed import contexts remain unchanged. Adoption also deduplicates fully
 identical claims. Separate sources retain their evidence and source IDs; no existing
 memory is rewritten by this deduplication. See [memory consistency](memory-consistency.md).
 

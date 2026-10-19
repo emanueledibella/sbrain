@@ -55,7 +55,9 @@ def relation(
             }
         ],
     }
-    return engine.remember(text, scope=scope, extraction=draft)
+    return engine.remember_reviewed(
+        text, scope=scope, extraction=draft, review_reason="Reviewed regression fixture"
+    )
 
 
 def deductions(engine, **kwargs):
@@ -89,7 +91,9 @@ def test_alias_normalization_and_unknown_predicates_remain_extensible(engine):
     assert claim["predicate_iri"] == str(SB.participatesIn)
     draft = extraction()
     draft["claims"][0]["predicate"] = "custom_memory_relation"
-    unknown = engine.remember("The trip goes to Palermo.", extraction=draft)
+    unknown = engine.remember_reviewed(
+        "The trip goes to Palermo.", extraction=draft, review_reason="Reviewed regression fixture"
+    )
     assert unknown["claim_ids"]
     assert engine.validate_knowledge()["conforms"]
 
@@ -358,7 +362,11 @@ def test_semantic_export_and_reasoning_fail_closed_on_source_tampering(engine, m
 
 
 def test_semantic_snapshot_is_bounded(engine, memory):
-    engine.remember("The trip goes to Palermo.", extraction=extraction())
+    engine.remember_reviewed(
+        "The trip goes to Palermo.",
+        extraction=extraction(),
+        review_reason="Reviewed regression fixture",
+    )
     engine.semantics.max_claims = 1
     with pytest.raises(ValueError, match="exceeds"):
         engine.export_rdf("personal")
